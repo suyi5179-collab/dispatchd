@@ -15,6 +15,7 @@ import (
 	"github.com/suyi5179-collab/dispatchd/internal/config"
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
 	"github.com/suyi5179-collab/dispatchd/internal/queue"
+	"github.com/suyi5179-collab/dispatchd/internal/ratelimit"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
 	"github.com/suyi5179-collab/dispatchd/internal/worker"
 )
@@ -48,6 +49,10 @@ func main() {
 			Base:        config.Duration("DISPATCHD_BACKOFF_BASE", time.Second),
 			Cap:         config.Duration("DISPATCHD_BACKOFF_CAP", 2*time.Minute),
 			MaxAttempts: config.Int("DISPATCHD_MAX_ATTEMPTS", 8),
+		},
+		Limits: map[string]*ratelimit.Bucket{
+			"email": ratelimit.New(config.Float("DISPATCHD_RATE_EMAIL", 40), config.Float("DISPATCHD_BURST_EMAIL", 10)),
+			"push":  ratelimit.New(config.Float("DISPATCHD_RATE_PUSH", 80), config.Float("DISPATCHD_BURST_PUSH", 20)),
 		},
 		Providers: map[string]*provider.Client{
 			"email": provider.NewClient("email", config.Env("DISPATCHD_EMAIL_URL", "http://localhost:8851"), timeout),

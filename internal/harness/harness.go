@@ -25,6 +25,7 @@ import (
 	"github.com/suyi5179-collab/dispatchd/internal/fakeprovider"
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
 	"github.com/suyi5179-collab/dispatchd/internal/queue"
+	"github.com/suyi5179-collab/dispatchd/internal/ratelimit"
 	"github.com/suyi5179-collab/dispatchd/internal/relay"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
 	"github.com/suyi5179-collab/dispatchd/internal/testenv"
@@ -42,6 +43,8 @@ type Options struct {
 	ProviderTimeout time.Duration  // default 2s
 	Concurrency     int            // per worker, default 32
 	Backoff         backoff.Policy // default: 50 ms base, 1 s cap, 8 attempts
+	// Limits: provider name → {rate per second, burst}. Empty: no buckets.
+	Limits map[string][2]float64
 }
 
 // Stack is a running pipeline.
@@ -123,10 +126,21 @@ func Start(t testing.TB, opt Options) *Stack {
 // Deliverer builds a worker's deliverer.
 func (s *Stack) Deliverer(name string) *worker.Deliverer {
 	return (&worker.Deliverer{Store: s.Store, Log: s.Log, Name: name, Lease: s.Opt.Lease, Backoff: s.Opt.Backoff, Concurrency: s.Opt.Concurrency,
+		Limits: s.limits(),
 		Providers: map[string]*provider.Client{
 			"email": provider.NewClient("email", s.EmailURL, s.Opt.ProviderTimeout),
 			"push":  provider.NewClient("push", s.PushURL, s.Opt.ProviderTimeout),
 		}}).Init()
+}
+
+// limits builds one bucket per configured provider. Each worker gets its
+// own buckets, like separate processes would.
+func (s *Stack) limits() map[string]*ratelimit.Bucket {
+	m := map[string]*ratelimit.Bucket{}
+	for name, l := range s.Opt.Limits {
+		m[name] = ratelimit.New(l[0], l[1])
+	}
+	return m
 }
 
 // StartWorker starts an in-process worker.

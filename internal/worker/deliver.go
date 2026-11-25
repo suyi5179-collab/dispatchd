@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/suyi5179-collab/dispatchd/internal/backoff"
+	"github.com/suyi5179-collab/dispatchd/internal/config"
 	"github.com/suyi5179-collab/dispatchd/internal/delayq"
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
+	"github.com/suyi5179-collab/dispatchd/internal/ratelimit"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
 )
 
@@ -28,6 +30,8 @@ type Deliverer struct {
 	Delay   *delayq.Queue
 	// Concurrency bounds attempts started by the delay queue.
 	Concurrency int
+	// Limits holds one token bucket per provider (nil: unlimited).
+	Limits map[string]*ratelimit.Bucket
 
 	sem chan struct{}
 }
@@ -71,8 +75,21 @@ func (d *Deliverer) Deliver(ctx context.Context, id string) (skipped bool, err e
 		return true, nil
 	}
 	client := d.Providers[n.Channel]
-	ok, err := d.Store.Claim(ctx, id, n.Attempts, client.Name, d.Lease)
+	// Wait for a token before claiming, so the wait does not eat into the
+	// lease. A token taken by a worker that then loses the claim goes back.
+	bucket := d.Limits[client.Name]
+	waited, left, err := bucket.Wait(ctx)
+	if err != nil {
+		return false, err
+	}
+	token := map[string]any{"token_wait_ms": float64(waited) / float64(time.Millisecond), "tokens_left": left, "rate_limited_by_us": bucket != nil && !config.Sabotaged(config.NoRateLimit)}
+	if bucket != nil {
+		token["bucket_rate"], token["bucket_burst"] = bucket.Rate, bucket.Burst
+	}
+	ObserveTokenWait(client.Name, waited)
+	ok, err := d.Store.Claim(ctx, id, n.Attempts, client.Name, d.Lease, token)
 	if err != nil || !ok {
+		bucket.Refund()
 		return !ok, err
 	}
 	attempt := n.Attempts + 1

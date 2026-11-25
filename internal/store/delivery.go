@@ -16,7 +16,7 @@ var claimable = []any{StatusQueued, StatusRetryScheduled}
 // UPDATE matches, so the other learns it lost and must not send. This is
 // the worker-side dedup: it is keyed on (notification id, attempt).
 // @learn:claim
-func (s *Store) Claim(ctx context.Context, id string, prev int, provider string, lease time.Duration) (bool, error) {
+func (s *Store) Claim(ctx context.Context, id string, prev int, provider string, lease time.Duration, extra map[string]any) (bool, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -47,7 +47,11 @@ func (s *Store) Claim(ctx context.Context, id string, prev int, provider string,
 		id, prev+1, provider, now, "IN_FLIGHT"); err != nil {
 		return false, err
 	}
-	if err := AddEvent(ctx, tx, id, "claimed", from, StatusSending, map[string]any{"attempt": prev + 1, "provider": provider}); err != nil {
+	data := map[string]any{"attempt": prev + 1, "provider": provider, "lease_until": now.Add(lease)}
+	for k, v := range extra {
+		data[k] = v
+	}
+	if err := AddEvent(ctx, tx, id, "claimed", from, StatusSending, data); err != nil {
 		return false, err
 	}
 	return true, tx.Commit()
