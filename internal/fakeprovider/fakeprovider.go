@@ -88,6 +88,13 @@ func (s *Server) SetMode(m Mode) {
 	s.seen = map[string]int{}
 }
 
+// ElapsedMS is the provider clock (the time base of Record.MS).
+func (s *Server) ElapsedMS() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return time.Since(s.origin).Milliseconds()
+}
+
 // Records returns a copy of what the provider received.
 func (s *Server) Records() []Record {
 	s.mu.Lock()

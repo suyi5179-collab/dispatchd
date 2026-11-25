@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/suyi5179-collab/dispatchd/internal/api"
+	"github.com/suyi5179-collab/dispatchd/internal/backoff"
 	"github.com/suyi5179-collab/dispatchd/internal/fakeprovider"
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
 	"github.com/suyi5179-collab/dispatchd/internal/queue"
@@ -35,11 +36,12 @@ const Key = "dk_test_only"
 
 // Options tune the stack.
 type Options struct {
-	Workers         int           // in-process workers started by Start (default 1; 0 with NoWorkers)
-	NoWorkers       bool          // start none; the test starts them
-	Lease           time.Duration // default 2s
-	ProviderTimeout time.Duration // default 2s
-	Concurrency     int           // per worker, default 32
+	Workers         int            // in-process workers started by Start (default 1; 0 with NoWorkers)
+	NoWorkers       bool           // start none; the test starts them
+	Lease           time.Duration  // default 2s
+	ProviderTimeout time.Duration  // default 2s
+	Concurrency     int            // per worker, default 32
+	Backoff         backoff.Policy // default: 50 ms base, 1 s cap, 8 attempts
 }
 
 // Stack is a running pipeline.
@@ -74,6 +76,9 @@ func Start(t testing.TB, opt Options) *Stack {
 	}
 	if opt.Concurrency == 0 {
 		opt.Concurrency = 32
+	}
+	if opt.Backoff.MaxAttempts == 0 {
+		opt.Backoff = backoff.Policy{Base: 50 * time.Millisecond, Cap: time.Second, MaxAttempts: 8}
 	}
 	if opt.Workers == 0 && !opt.NoWorkers {
 		opt.Workers = 1
@@ -116,27 +121,28 @@ func Start(t testing.TB, opt Options) *Stack {
 }
 
 // Deliverer builds a worker's deliverer.
-func (s *Stack) Deliverer() *worker.Deliverer {
-	return &worker.Deliverer{Store: s.Store, Log: s.Log, Lease: s.Opt.Lease, Providers: map[string]*provider.Client{
-		"email": provider.NewClient("email", s.EmailURL, s.Opt.ProviderTimeout),
-		"push":  provider.NewClient("push", s.PushURL, s.Opt.ProviderTimeout),
-	}}
+func (s *Stack) Deliverer(name string) *worker.Deliverer {
+	return (&worker.Deliverer{Store: s.Store, Log: s.Log, Name: name, Lease: s.Opt.Lease, Backoff: s.Opt.Backoff, Concurrency: s.Opt.Concurrency,
+		Providers: map[string]*provider.Client{
+			"email": provider.NewClient("email", s.EmailURL, s.Opt.ProviderTimeout),
+			"push":  provider.NewClient("push", s.PushURL, s.Opt.ProviderTimeout),
+		}}).Init()
 }
 
 // StartWorker starts an in-process worker.
 func (s *Stack) StartWorker(name string) {
 	s.T.Helper()
-	kc, err := worker.ConsumerClient(s.Brokers, s.Group, s.Topics.All(), 6*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	d := s.Deliverer(name)
+	kc, err := worker.ConsumerClient(s.Brokers, s.Group, s.Topics.All(), 6*time.Second, func() { go func() { _, _ = d.Reload(ctx) }() })
 	if err != nil {
 		s.T.Fatal(err)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	d := s.Deliverer()
 	c := &worker.Consumer{Client: kc, D: d, Log: s.Log, Concurrency: s.Opt.Concurrency, Name: name}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		go func() { _ = d.Recover(ctx, func(id string) { go d.Deliver(context.WithoutCancel(ctx), id) }) }()
+		go d.RunScheduler(ctx)
 		if err := c.Run(ctx); err != nil {
 			s.T.Logf("worker %s stopped: %v", name, err)
 		}
@@ -252,7 +258,7 @@ func (s *Stack) WaitSettled(timeout time.Duration) map[string]int {
 	deadline := time.Now().Add(timeout)
 	for {
 		c := s.Counts()
-		if c[store.StatusQueued]+c[store.StatusSending]+c["RETRY_SCHEDULED"] == 0 && len(c) > 0 {
+		if c[store.StatusQueued]+c[store.StatusSending]+c[store.StatusRetryScheduled] == 0 && len(c) > 0 {
 			return c
 		}
 		if time.Now().After(deadline) {

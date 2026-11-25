@@ -1,49 +1,77 @@
 // Package worker delivers notifications: claim an attempt in MySQL, send
-// it to the provider, record the result.
+// it to the provider, record the result, and schedule a retry in the
+// delay queue when the failure is temporary.
 package worker
 
 import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"sort"
 	"time"
 
+	"github.com/suyi5179-collab/dispatchd/internal/backoff"
+	"github.com/suyi5179-collab/dispatchd/internal/delayq"
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
 )
 
-// Deliverer runs one attempt at a time for a notification.
+// Deliverer runs attempts for notifications.
 type Deliverer struct {
 	Store     *store.Store
 	Providers map[string]*provider.Client // by channel
 	Log       *slog.Logger
+	Name      string // worker name, written into events
 	// Lease is how long a claimed attempt belongs to this worker. It must
 	// be longer than the provider timeout.
-	Lease time.Duration
+	Lease   time.Duration
+	Backoff backoff.Policy
+	Delay   *delayq.Queue
+	// Concurrency bounds attempts started by the delay queue.
+	Concurrency int
+
+	sem chan struct{}
 }
 
-func (d *Deliverer) lease() time.Duration {
-	if d.Lease > 0 {
-		return d.Lease
+// Init fills defaults. Call before use.
+func (d *Deliverer) Init() *Deliverer {
+	if d.Lease <= 0 {
+		d.Lease = 15 * time.Second
 	}
-	return 15 * time.Second
+	if d.Backoff.MaxAttempts == 0 {
+		d.Backoff = backoff.Default()
+	}
+	if d.Delay == nil {
+		d.Delay = delayq.New()
+	}
+	if d.Concurrency <= 0 {
+		d.Concurrency = 32
+	}
+	d.sem = make(chan struct{}, d.Concurrency)
+	return d
 }
 
-// Deliver makes the next attempt for a notification, if it still needs one.
+// Deliver makes the next attempt for a notification, if it needs one now.
 // It returns skipped=true when another worker (or an earlier copy of the
-// same Kafka message) already owns that attempt or the notification is done.
+// same Kafka message) already owns that attempt, the notification is
+// finished, or its retry is not due yet (then it goes into the delay queue).
 // @learn:deliver
 func (d *Deliverer) Deliver(ctx context.Context, id string) (skipped bool, err error) {
 	n, err := d.Store.Notification(ctx, "", id)
 	if err != nil {
 		return false, err
 	}
-	if n.Status != store.StatusQueued {
+	switch n.Status {
+	case store.StatusQueued:
+	case store.StatusRetryScheduled:
+		if n.NextAttempt != nil && time.Now().Before(*n.NextAttempt) {
+			d.Delay.Push(delayq.Item{ID: id, Due: *n.NextAttempt, Kind: "retry", Attempts: n.Attempts})
+			return true, nil
+		}
+	default:
 		return true, nil
 	}
 	client := d.Providers[n.Channel]
-	ok, err := d.Store.Claim(ctx, id, n.Attempts, client.Name, d.lease())
+	ok, err := d.Store.Claim(ctx, id, n.Attempts, client.Name, d.Lease)
 	if err != nil || !ok {
 		return !ok, err
 	}
@@ -52,50 +80,105 @@ func (d *Deliverer) Deliver(ctx context.Context, id string) (skipped bool, err e
 	_ = json.Unmarshal(n.Params, &params)
 	res := client.Send(ctx, provider.Message{NotificationID: id, Attempt: attempt, Recipient: n.Recipient, Template: n.Template, Params: params})
 	// @learn:end deliver
+	return false, d.record(ctx, n, client.Name, attempt, res)
+}
+
+// record writes the outcome and, for a temporary failure, schedules the
+// retry: the due time goes into MySQL first (so a restart finds it), then
+// into this worker's delay queue.
+// @learn:schedule-retry
+func (d *Deliverer) record(ctx context.Context, n *store.Notification, name string, attempt int, res provider.Result) error {
 	o := store.Outcome{Attempt: attempt, Outcome: string(res.Kind), HTTPStatus: res.HTTPStatus, ProviderCode: res.Code, Detail: res, LatencyMS: float64(res.Latency) / float64(time.Millisecond)}
+	ev := map[string]any{"provider_response": res, "worker": d.Name}
+	var due time.Time
 	switch res.Kind {
 	case provider.Delivered:
 		o.NewStatus = store.StatusDelivered
 	case provider.Permanent:
 		o.NewStatus = store.StatusFailedPermanent
-		o.LastError = lastError(client.Name, res)
-	default:
-		o.NewStatus = store.StatusFailedTemporary // retries arrive in chapter 04
-		o.LastError = lastError(client.Name, res)
+		o.LastError = lastError(name, res)
+	default: // Temporary, RateLimited
+		o.LastError = lastError(name, res)
+		if attempt >= d.Backoff.MaxAttempts {
+			o.NewStatus = store.StatusFailedExhausted
+			break
+		}
+		wait, calc := d.Backoff.Next(attempt, res.RetryAfter)
+		due = time.Now().Add(wait)
+		o.NewStatus, o.NextAttempt = store.StatusRetryScheduled, &due
+		ev["backoff"] = calc
+		ev["next_attempt_at"] = due.UTC()
 	}
-	d.Log.Info("attempt", "id", id, "attempt", attempt, "kind", res.Kind, "status", res.HTTPStatus)
+	d.Log.Info("attempt", "id", n.ID, "attempt", attempt, "kind", res.Kind, "status", res.HTTPStatus, "next", o.NewStatus)
 	// A fresh context: once the provider has answered, the answer must be
 	// written down even if shutdown has started.
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
 	defer cancel()
-	return false, d.Store.Finish(wctx, id, o, map[string]any{"provider_response": res})
-}
-
-// Recover takes the attempts that were in SENDING when this worker
-// started (a dead worker left them there), waits for each lease to run
-// out, then puts the notification back in the queue and delivers it.
-// Attempts this process starts later are not in the snapshot.
-func (d *Deliverer) Recover(ctx context.Context, redeliver func(id string)) error {
-	inflight, err := d.Store.InFlight(ctx)
-	if err != nil {
+	if err := d.Store.Finish(wctx, n.ID, o, ev); err != nil {
 		return err
 	}
-	sort.Slice(inflight, func(i, j int) bool { return inflight[i].LeaseUntil.Before(inflight[j].LeaseUntil) })
-	for _, l := range inflight {
-		if wait := time.Until(l.LeaseUntil); wait > 0 {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(wait + 10*time.Millisecond):
-			}
-		}
-		if ok, err := d.Store.ExpireLease(ctx, l, store.StatusQueued, nil); err == nil && ok {
-			d.Log.Warn("lease expired; redelivering", "id", l.ID, "attempt", l.Attempts)
-			redeliver(l.ID)
-		}
+	if o.NewStatus == store.StatusRetryScheduled {
+		d.Delay.Push(delayq.Item{ID: n.ID, Due: due, Kind: "retry", Attempts: attempt})
+		top, _ := d.Delay.Peek()
+		_ = d.Store.AddEvent(wctx, n.ID, "delayed", "", "", map[string]any{"next_attempt_at": due.UTC(), "heap_len": d.Delay.Len(), "heap_top": top.ID, "heap_top_due": top.Due.UTC(), "worker": d.Name})
 	}
 	return nil
 }
+
+// @learn:end schedule-retry
+
+// RunScheduler pops due items from the delay queue until ctx ends.
+func (d *Deliverer) RunScheduler(ctx context.Context) {
+	d.Delay.Run(ctx, func(it delayq.Item) {
+		go func() { // never block the queue's goroutine
+			d.sem <- struct{}{}
+			defer func() { <-d.sem }()
+			d.fire(ctx, it)
+		}()
+	})
+}
+
+func (d *Deliverer) fire(ctx context.Context, it delayq.Item) {
+	now := time.Now()
+	if it.Kind == "lease" {
+		ok, err := d.Store.ExpireLease(ctx, store.Leased{ID: it.ID, Attempts: it.Attempts, LeaseUntil: it.Due}, store.StatusRetryScheduled, &now)
+		if err != nil || !ok {
+			return // the attempt finished after all, or someone else took it
+		}
+		d.Log.Warn("lease expired; retrying", "id", it.ID, "attempt", it.Attempts)
+	} else {
+		_ = d.Store.AddEvent(ctx, it.ID, "woken", "", "", map[string]any{"due": it.Due.UTC(), "late_ms": float64(now.Sub(it.Due)) / float64(time.Millisecond),
+			"timer_fires": d.Delay.TimerFires.Load(), "kicks": d.Delay.Kicks.Load(), "worker": d.Name})
+	}
+	if _, err := d.Deliver(context.WithoutCancel(ctx), it.ID); err != nil {
+		d.Log.Error("retry", "id", it.ID, "err", err)
+	}
+}
+
+// Reload puts every pending retry, and every attempt left in SENDING
+// (with its lease expiry), into the delay queue. It runs at startup and
+// whenever this worker is assigned partitions (a peer may have died and
+// left retries that only lived in its memory).
+// @learn:reload
+func (d *Deliverer) Reload(ctx context.Context) (int, error) {
+	sched, err := d.Store.Scheduled(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, l := range sched {
+		d.Delay.Push(delayq.Item{ID: l.ID, Due: l.LeaseUntil, Kind: "retry", Attempts: l.Attempts})
+	}
+	inflight, err := d.Store.InFlight(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, l := range inflight {
+		d.Delay.Push(delayq.Item{ID: l.ID, Due: l.LeaseUntil, Kind: "lease", Attempts: l.Attempts})
+	}
+	return len(sched) + len(inflight), nil
+}
+
+// @learn:end reload
 
 func lastError(name string, r provider.Result) map[string]any {
 	return map[string]any{"provider": name, "kind": r.Kind, "http_status": r.HTTPStatus, "code": r.Code, "message": r.Message, "action": r.Action, "raw": r.Body}

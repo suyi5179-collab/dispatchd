@@ -28,7 +28,8 @@ const (
 	StatusSending         = "SENDING"
 	StatusDelivered       = "DELIVERED"
 	StatusFailedPermanent = "FAILED_PERMANENT"
-	StatusFailedTemporary = "FAILED_TEMPORARY" // step-01 only: no retries yet
+	StatusRetryScheduled  = "RETRY_SCHEDULED"  // waiting in a worker's delay queue
+	StatusFailedExhausted = "FAILED_EXHAUSTED" // temporary failures until MaxAttempts
 )
 
 // ErrNotFound means no such row (or not the caller's).
@@ -167,6 +168,8 @@ type Notification struct {
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 	DeliveredAt *time.Time      `json:"delivered_at,omitempty"`
+	NextAttempt *time.Time      `json:"next_attempt_at,omitempty"`
+	LeaseUntil  *time.Time      `json:"lease_until,omitempty"`
 }
 
 // Attempt is one delivery attempt.
@@ -231,14 +234,14 @@ func InsertNotification(ctx context.Context, x Execer, n *Notification) error {
 	return err
 }
 
-const notifCols = `id, client_id, channel, recipient, template, params, status, attempts, last_error, created_at, updated_at, delivered_at`
+const notifCols = `id, client_id, channel, recipient, template, params, status, attempts, last_error, created_at, updated_at, delivered_at, next_attempt_at, lease_until`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scanNotification(r scanner) (*Notification, error) {
 	var n Notification
 	var params, lastErr []byte
-	if err := r.Scan(&n.ID, &n.ClientID, &n.Channel, &n.Recipient, &n.Template, &params, &n.Status, &n.Attempts, &lastErr, &n.CreatedAt, &n.UpdatedAt, &n.DeliveredAt); err != nil {
+	if err := r.Scan(&n.ID, &n.ClientID, &n.Channel, &n.Recipient, &n.Template, &params, &n.Status, &n.Attempts, &lastErr, &n.CreatedAt, &n.UpdatedAt, &n.DeliveredAt, &n.NextAttempt, &n.LeaseUntil); err != nil {
 		return nil, err
 	}
 	n.Params = params

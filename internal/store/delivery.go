@@ -8,7 +8,7 @@ import (
 )
 
 // claimable are the statuses a worker may start an attempt from.
-var claimable = []any{StatusQueued}
+var claimable = []any{StatusQueued, StatusRetryScheduled}
 
 // Claim moves a notification into SENDING for attempt prev+1, but only if
 // it is still where the caller saw it (status claimable and attempts ==
@@ -64,7 +64,8 @@ type Outcome struct {
 	Detail       any
 	LatencyMS    float64
 	NewStatus    string
-	LastError    any // nil on success
+	LastError    any        // nil on success
+	NextAttempt  *time.Time // set when NewStatus is RETRY_SCHEDULED
 }
 
 // Finish records an attempt's result and the notification's next status
@@ -84,8 +85,8 @@ func (s *Store) Finish(ctx context.Context, id string, o Outcome, eventData map[
 	if o.NewStatus == StatusDelivered {
 		delivered = now
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE notifications SET status=?, last_error=?, lease_until=NULL, updated_at=?, delivered_at=COALESCE(?, delivered_at) WHERE id=? AND attempts=? AND status=?`,
-		o.NewStatus, jsonOrNull(o.LastError), now, delivered, id, o.Attempt, StatusSending); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE notifications SET status=?, last_error=?, lease_until=NULL, next_attempt_at=?, updated_at=?, delivered_at=COALESCE(?, delivered_at) WHERE id=? AND attempts=? AND status=?`,
+		o.NewStatus, jsonOrNull(o.LastError), o.NextAttempt, now, delivered, id, o.Attempt, StatusSending); err != nil {
 		return err
 	}
 	if eventData == nil {
@@ -111,6 +112,25 @@ type Leased struct {
 	ID         string
 	Attempts   int
 	LeaseUntil time.Time
+}
+
+// Scheduled lists notifications waiting for a retry, with their due
+// time: a restarted worker puts them back into its delay queue.
+func (s *Store) Scheduled(ctx context.Context) ([]Leased, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, attempts, COALESCE(next_attempt_at, updated_at) FROM notifications WHERE status=?`, StatusRetryScheduled)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Leased
+	for rows.Next() {
+		var l Leased
+		if err := rows.Scan(&l.ID, &l.Attempts, &l.LeaseUntil); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
 }
 
 // InFlight lists notifications in SENDING: attempts that some worker

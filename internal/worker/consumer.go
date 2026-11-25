@@ -15,8 +15,14 @@ import (
 
 // ConsumerClient joins the worker group. Offsets are committed by hand,
 // only after the outcome is in MySQL (at-least-once).
-func ConsumerClient(brokers []string, group string, topics []string, session time.Duration) (*kgo.Client, error) {
+// onAssigned runs (briefly) whenever the group hands this worker partitions.
+func ConsumerClient(brokers []string, group string, topics []string, session time.Duration, onAssigned func()) (*kgo.Client, error) {
 	return kgo.NewClient(
+		kgo.OnPartitionsAssigned(func(context.Context, *kgo.Client, map[string][]int32) {
+			if onAssigned != nil {
+				onAssigned()
+			}
+		}),
 		kgo.SeedBrokers(brokers...),
 		kgo.ConsumerGroup(group),
 		kgo.ConsumeTopics(topics...),

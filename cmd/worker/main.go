@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/suyi5179-collab/dispatchd/internal/backoff"
 	"github.com/suyi5179-collab/dispatchd/internal/config"
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
 	"github.com/suyi5179-collab/dispatchd/internal/queue"
@@ -41,20 +42,44 @@ func main() {
 		os.Exit(1)
 	}
 	timeout := config.Duration("DISPATCHD_PROVIDER_TIMEOUT", 5*time.Second)
-	d := &worker.Deliverer{Store: st, Log: log, Lease: config.Duration("DISPATCHD_LEASE", 15*time.Second), Providers: map[string]*provider.Client{
-		"email": provider.NewClient("email", config.Env("DISPATCHD_EMAIL_URL", "http://localhost:8851"), timeout),
-		"push":  provider.NewClient("push", config.Env("DISPATCHD_PUSH_URL", "http://localhost:8852"), timeout),
-	}}
-	kc, err := worker.ConsumerClient(brokers, config.Env("DISPATCHD_GROUP", "dispatchd-workers"), topics.All(), config.Duration("DISPATCHD_SESSION_TIMEOUT", 10*time.Second))
+	d := (&worker.Deliverer{Store: st, Log: log, Name: name, Lease: config.Duration("DISPATCHD_LEASE", 15*time.Second),
+		Concurrency: config.Int("DISPATCHD_CONCURRENCY", 32),
+		Backoff: backoff.Policy{
+			Base:        config.Duration("DISPATCHD_BACKOFF_BASE", time.Second),
+			Cap:         config.Duration("DISPATCHD_BACKOFF_CAP", 2*time.Minute),
+			MaxAttempts: config.Int("DISPATCHD_MAX_ATTEMPTS", 8),
+		},
+		Providers: map[string]*provider.Client{
+			"email": provider.NewClient("email", config.Env("DISPATCHD_EMAIL_URL", "http://localhost:8851"), timeout),
+			"push":  provider.NewClient("push", config.Env("DISPATCHD_PUSH_URL", "http://localhost:8852"), timeout),
+		}}).Init()
+	reload := make(chan struct{}, 1)
+	kc, err := worker.ConsumerClient(brokers, config.Env("DISPATCHD_GROUP", "dispatchd-workers"), topics.All(), config.Duration("DISPATCHD_SESSION_TIMEOUT", 10*time.Second),
+		func() {
+			select {
+			case reload <- struct{}{}:
+			default:
+			}
+		})
 	if err != nil {
 		log.Error("kafka", "err", err)
 		os.Exit(1)
 	}
 	defer kc.Close()
 
+	go d.RunScheduler(ctx)
 	go func() {
-		if err := d.Recover(ctx, func(id string) { go d.Deliver(context.WithoutCancel(ctx), id) }); err != nil && !errors.Is(err, context.Canceled) {
-			log.Error("recover", "err", err)
+		for {
+			if n, err := d.Reload(ctx); err != nil && !errors.Is(err, context.Canceled) {
+				log.Error("reload", "err", err)
+			} else {
+				log.Info("delay queue reloaded from MySQL", "items", n)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case <-reload:
+			}
 		}
 	}()
 
