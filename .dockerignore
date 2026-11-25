@@ -1,0 +1,8 @@
+.git
+node_modules
+frontend
+e2e
+video
+docs
+bin
+.runtime

@@ -1,0 +1,57 @@
+# dispatchd: API, fake email/push providers, MySQL.
+# Host ports: API 8850, email 8851, push 8852, MySQL 33518.
+name: dispatchd
+
+x-go: &go
+  image: dispatchd:dev
+  pull_policy: never # built once by the api service below
+  restart: unless-stopped
+  mem_limit: 96m
+
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: dispatchd-root # local demo database, not a secret
+      MYSQL_DATABASE: dispatchd
+      MYSQL_USER: dispatchd
+      MYSQL_PASSWORD: dispatchd # local demo database, not a secret
+    command: ["--performance-schema=OFF", "--innodb-buffer-pool-size=64M", "--skip-name-resolve", "--max-connections=200", "--innodb-log-buffer-size=8M"]
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./deploy/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports: ["33518:3306"]
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -udispatchd -pdispatchd --silent"]
+      interval: 2s
+      retries: 60
+
+  email:
+    <<: *go
+    command: ["fakeprovider", "-kind", "email", "-addr", ":8851"]
+    ports: ["8851:8851"]
+
+  push:
+    <<: *go
+    command: ["fakeprovider", "-kind", "push", "-addr", ":8852"]
+    ports: ["8852:8852"]
+
+  api:
+    <<: *go
+    build: .
+    command: ["api"]
+    environment:
+      DISPATCHD_MYSQL_DSN: dispatchd:dispatchd@tcp(mysql:3306)/dispatchd
+      DISPATCHD_EMAIL_URL: http://email:8851
+      DISPATCHD_PUSH_URL: http://push:8852
+      DISPATCHD_API_KEYS: ${DISPATCHD_API_KEYS:-demo:dk_demo_local_only:admin}
+    ports: ["8850:8850"]
+    depends_on: {mysql: {condition: service_healthy}}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8850/healthz >/dev/null"]
+      interval: 2s
+      retries: 60
+
+volumes:
+  mysql-data:
