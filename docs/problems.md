@@ -121,11 +121,11 @@ if fetches.IsClientClosed() || ctx.Err() != nil {
 **怎么证明修好了**：同一个测试，开 jitter 通过、关 jitter 失败，输出在 `docs/results/contrast-jitter-*.txt`。
 
 ```text
-开 jitter：busiest 100 ms 19 requests, 18 rejected with 429 … PASS
-关 jitter：busiest 100 ms 42 requests, 210 rejected with 429 … FAIL
+开 jitter：busiest 100 ms 20 requests, 29 rejected with 429 … all delivered after 9.27s … PASS
+关 jitter：busiest 100 ms 45 requests, 237 rejected with 429 … all delivered after 16.28s … FAIL
 ```
 
-**面试怎么讲**：我给 jitter 写了对照测试，结果关掉保护它也是绿的（S）。我得让判据真的依赖这层保护（T）。我把风暴的两个前提补上：失败必须同时发生，恢复的一方必须有容量上限，然后数被拒的请求（A）。现在关掉 jitter 被拒两百多个、开着十几个，测试是活的（R）。
+**面试怎么讲**：我给 jitter 写了对照测试，结果关掉保护它也是绿的（S）。我得让判据真的依赖这层保护（T）。我把风暴的两个前提补上：失败必须同时发生，恢复的一方必须有容量上限，然后数被拒的请求（A）。现在关掉 jitter 被拒二百三十七个、开着二十九个，测试是活的（R）。
 
 <a id="q04"></a>
 
@@ -299,9 +299,10 @@ kc, err := worker.ConsumerClient(brokers, "dispatchd-workers", topics.All(), ses
 
 ```text
 关 jitter：
-  after recovery: busiest 100 ms 42 requests, 210 rejected with 429
-  requests per 100 ms after recovery: 一波打满，一秒多全静，再一波 …
-  --- FAIL: retry storm: the recovering provider had to reject 210 requests (limit 60)
+  after recovery: busiest 100 ms 45 requests, 237 rejected with 429
+  requests per 100 ms after recovery: 20 38 28 45 28 41 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 13 26 31 27 34 5 0 …
+  retry storm: the recovering provider had to reject 237 requests (limit 60)
+  --- FAIL
 ```
 
 **在哪里**：[`internal/backoff/backoff.go` 的 `Next`](../internal/backoff/backoff.go#anchor=full-jitter)；关掉 jitter 时走的是 [`no-jitter`](../internal/backoff/backoff.go#anchor=no-jitter)。
@@ -319,9 +320,9 @@ d = ceil                                   // 修复前：所有人一样
 d = time.Duration(rand.Float64() * float64(ceil))   // 修复后
 ```
 
-**怎么证明修好了**：同一个测试打开 jitter：`busiest 100 ms 19 requests, 18 rejected with 429`，全部送达还更快。
+**怎么证明修好了**：同一个测试打开 jitter：`busiest 100 ms 20 requests, 29 rejected with 429`，全部送达用了 9.3 秒（关掉时 16.3 秒）。
 
-**面试怎么讲**：一次外部服务故障恢复时，积压的重试成波打过去，又把它打挂（S）。要让重试在时间上错开（T）。我在指数退避上加了 full jitter，并做了积压加限容量的对照测试（A）。关掉 jitter 被拒两百多次，打开只有十几次（R）。
+**面试怎么讲**：一次外部服务故障恢复时，积压的重试成波打过去，又把它打挂（S）。要让重试在时间上错开（T）。我在指数退避上加了 full jitter，并做了积压加限容量的对照测试（A）。关掉 jitter 被拒二百三十七次，打开二十九次（R）。
 
 <a id="q10"></a>
 
@@ -332,8 +333,9 @@ d = time.Duration(rand.Float64() * float64(ceil))   // 修复后
 **现象**
 
 ```text
-100 notifications: map[DELIVERED:100] in 6.21s; provider got 524 requests, 424 of them 429; busiest second 238
---- FAIL: the provider answered 429 424 times (limit 5)
+100 notifications: map[DELIVERED:100] in 5.72s; provider got 528 requests, 428 of them 429; busiest second 327
+the provider answered 429 428 times (limit 5)
+--- FAIL
 ```
 
 **在哪里**：[`internal/ratelimit/bucket.go`](../internal/ratelimit/bucket.go#anchor=token-bucket)；关掉保护时走的是 [`ratelimit-sabotage`](../internal/ratelimit/bucket.go#anchor=ratelimit-sabotage)。测试是 [`TestTokenBucketKeepsUnderTheProviderQuota`](../internal/harness/ratelimit_test.go#anchor=ratelimit-test)。
@@ -341,11 +343,11 @@ d = time.Duration(rand.Float64() * float64(ceil))   // 修复后
 **怎么定位**
 
 - 告警是 provider 的 429 比例高。先看是不是 provider 降了配额：provider 的配额没变，是每秒二十个。
-- 再看我们发了多快：最忙的一秒发了二百三十八个。worker 有三十二个并发，积压一来就全打出去了。
+- 再看我们发了多快：最忙的一秒发了三百二十七个。worker 有三十二个并发，积压一来就全打出去了。
 - 429 会被重试，所以最后都送到了，但 provider 白挨了四百多次请求。真实的 provider 会因此限流整个账号。
 
 **怎么解决**：每个 provider 一个令牌桶，设在配额下面一点（十八每秒，突发五个）。在 claim 之前拿令牌，拿不到就等，不让等待吃掉租约。
 
-**怎么证明修好了**：打开令牌桶：`provider got 100 requests, 0 of them 429; busiest second 18`。
+**怎么证明修好了**：打开令牌桶：`provider got 100 requests, 0 of them 429; busiest second 22`（突发五个加每秒十八个）。
 
-**面试怎么讲**：积压来的时候 worker 并发打满，provider 大量回 429（S）。我们要自己守住对方的配额（T）。我给每个 provider 加了令牌桶，在 claim 之前取令牌（A）。一百条积压，关掉令牌桶有四百多个 429，打开后是零（R）。
+**面试怎么讲**：积压来的时候 worker 并发打满，provider 大量回 429（S）。我们要自己守住对方的配额（T）。我给每个 provider 加了令牌桶，在 claim 之前取令牌（A）。一百条积压，关掉令牌桶有四百二十八个 429，打开后是零（R）。

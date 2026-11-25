@@ -81,7 +81,7 @@
 - 429 的 `Retry-After` 加在上面当下限。
 
 **追问**：你怎么知道 jitter 真的有用？
-答：`TestRetriesAfterAnOutageDoNotArriveAsOneSpike`：两百个通知积压后同时失败，provider 恢复后每秒只扛一百个。开 jitter 被拒十几个，关掉两百多个（`docs/results/contrast-jitter-*.txt`）。
+答：`TestRetriesAfterAnOutageDoNotArriveAsOneSpike`：两百个通知积压后同时失败，provider 恢复后每秒只扛一百个。开 jitter 被拒二十九个，关掉二百三十七个（`docs/results/contrast-jitter-*.txt`）。
 
 ### 为什么用最小堆延迟队列，不定时扫表？
 
@@ -275,7 +275,7 @@
 
 **展开**：
 - 幂等：关掉后 `TestRetryAfterTimeoutSendsOnce` 报 `provider deliveries: 2`。
-- jitter：关掉后恢复中的 provider 被拒两百多次，开着十几次。
+- jitter：关掉后恢复中的 provider 被拒二百三十七次，开着二十九次。
 - 令牌桶：关掉后一百条积压换来四百多个 429，开着是零。
 - 第一版 jitter 对照关掉也是绿的，这件事本身证明了对照测试有多必要，见 [q03](problems.md#q03)。
 
@@ -342,12 +342,12 @@
 **一句话答案**：先讲为什么光有退避不够（同时失败就同时回来），再用仓库里的风暴对照给出数字，最后讲永久失败的分类和动作。
 
 **展开**：
-- 仓库实测（一次运行）：关 jitter 恢复中的 provider 被拒两百一十次，开 jitter 十八次。
+- 仓库实测（`docs/results/contrast-jitter-*.txt`）：关 jitter 恢复中的 provider 被拒二百三十七次、全部送达用了 16.3 秒；开 jitter 被拒二十九次、9.3 秒。
 - 永久失败的 `last_error` 里有 provider、状态码、错误码、原文和动作。
 - runbook 里有一节专门处理永久失败，按错误码给出动作。
 
 **追问**：jitter 会不会让整体变慢？
-答：在我们的场景里反而更快，因为没有被拒之后的二次等待。没有容量限制时，jitter 确实会让部分重试晚一些，第一版测试里就看到过。
+答：在我们的场景里反而更快（9.3 秒对 16.3 秒），因为没有被拒之后的二次等待。没有容量限制时，jitter 确实会让部分重试晚一些，第一版测试里就看到过。
 
 ### 「令牌桶和最小堆延迟队列，不轮询」怎么证明？
 

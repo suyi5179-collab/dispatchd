@@ -20,8 +20,8 @@ All numbers come from this repository's tests and scripts, run on one laptop (Ap
 | protection | test | on | off |
 |---|---|---|---|
 | idempotency keys | `TestRetryAfterTimeoutSendsOnce`: the caller times out at 100 ms, the answer comes at 300 ms, the caller retries with the same key | 1 notification, 1 delivery | 2 notifications, 2 deliveries |
-| full jitter | `TestRetriesAfterAnOutageDoNotArriveAsOneSpike`: 200 queued notifications fail together; 1.5 s later the provider recovers but takes only 100 req/s | 18 requests rejected (429) after recovery | 210 rejected |
-| token bucket | `TestTokenBucketKeepsUnderTheProviderQuota`: 100 queued emails, provider quota 20/s, our bucket 18/s | 0 × 429 | 424 × 429 |
+| full jitter | `TestRetriesAfterAnOutageDoNotArriveAsOneSpike`: 200 queued notifications fail together; 1.5 s later the provider recovers but takes only 100 req/s | 29 requests rejected (429) after recovery, busiest 100 ms 20, all delivered in 9.3 s | 237 rejected, busiest 100 ms 45, all delivered in 16.3 s |
+| token bucket | `TestTokenBucketKeepsUnderTheProviderQuota`: 100 queued emails, provider quota 20/s, our bucket 18/s | 100 requests, 0 × 429, busiest second 22 | 528 requests, 428 × 429, busiest second 327 |
 <!-- contrasts:end -->
 
 ### Other measured behaviour
@@ -119,7 +119,45 @@ Two runs of each "can it fail?" control, as printed by the tests (`docs/results/
 
 <!-- contrast-output:begin -->
 ```text
-(filled from docs/results by the last contrasts run)
+# idempotency keys — go test -run 'RetryAfterTimeout|SameKey|Concurrent' ./internal/api
+protection on:
+  --- PASS: TestSameKeySameBodyReturnsTheSameNotification (0.60s)
+  --- PASS: TestSameKeyDifferentBodyIs422 (0.37s)
+  --- PASS: TestConcurrentSameKeyStoresOneRow (0.28s)
+  notifications stored: 1, provider deliveries: 1
+  --- PASS: TestRetryAfterTimeoutSendsOnce (0.83s)
+protection off (DISPATCHD_SABOTAGE=idempotency):
+  same key gave two notifications: ntf_01M8A0P5EZFKSPA614NHYTNC04 and ntf_01M8A0P5FBGXCTYMGAD185H323
+  --- FAIL: TestSameKeySameBodyReturnsTheSameNotification (0.27s)
+  got 202 map[attempts:0 channel:email client_id:t created_at:2026-11-25T18:50:00.820445Z id:ntf_01M8A0P5QME3KXW0S7PFQS3F97 params:map[name:Bob] recipient:bob@example.com status:QUEUED template:welcome updated_at:2026-11-25T18:50:00.820445Z]
+  --- FAIL: TestSameKeyDifferentBodyIs422 (0.24s)
+  request 1: 202 "ntf_01M8A0P5YPC3ZBA31TGSB1FESK" (first was "ntf_01M8A0P5YN7WP03HYG8647YKJA")
+  --- FAIL: TestConcurrentSameKeyStoresOneRow (0.26s)
+  notifications stored: 2, provider deliveries: 2
+  the provider delivered 2 emails for one signup (notifications stored: 2)
+  --- FAIL: TestRetryAfterTimeoutSendsOnce (0.87s)
+
+# full jitter — go test -run Spike ./internal/harness
+protection on:
+  200 notifications failed together; after recovery: busiest 100 ms 20 requests, 29 rejected with 429
+  requests per 100 ms after recovery: 20 13 13 16 15 12 11 13 4 6 8 16 8 10 6 6 5 5 3 3 0 4 0 1 2 3 1 3 3 1 5 1 3 0 2 0 2 0 2 0
+  provider requests in total: 855; all delivered after 9.27s
+  --- PASS: TestRetriesAfterAnOutageDoNotArriveAsOneSpike (11.34s)
+protection off (DISPATCHD_SABOTAGE=jitter):
+  200 notifications failed together; after recovery: busiest 100 ms 45 requests, 237 rejected with 429
+  requests per 100 ms after recovery: 20 38 28 45 28 41 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 13 26 31 27 34 5 0 0 0 0 0 0 0 0 0 0 0 0 0
+  provider requests in total: 837; all delivered after 16.28s
+  retry storm: the recovering provider had to reject 237 requests (limit 60)
+  --- FAIL: TestRetriesAfterAnOutageDoNotArriveAsOneSpike (19.56s)
+
+# token bucket — go test -run TokenBucket ./internal/harness
+protection on:
+  100 notifications: map[DELIVERED:100] in 5.41s; provider got 100 requests, 0 of them 429; busiest second 22; longest token wait 1762 ms
+  --- PASS: TestTokenBucketKeepsUnderTheProviderQuota (6.68s)
+protection off (DISPATCHD_SABOTAGE=ratelimit):
+  100 notifications: map[DELIVERED:100] in 5.72s; provider got 528 requests, 428 of them 429; busiest second 327; longest token wait 0 ms
+  the provider answered 429 428 times (limit 5)
+  --- FAIL: TestTokenBucketKeepsUnderTheProviderQuota (7.03s)
 ```
 <!-- contrast-output:end -->
 

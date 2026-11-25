@@ -1,12 +1,12 @@
-    idempotency_test.go:28: same key gave two notifications: ntf_01M89Z2MVZ62S3EEMWB34JKV8Q and ntf_01M89Z2MW9KED6XNMMYEWD42TQ
---- FAIL: TestSameKeySameBodyReturnsTheSameNotification (0.30s)
-    idempotency_test.go:46: got 202 map[attempts:0 channel:email client_id:t created_at:2026-11-25T18:21:52.732394Z id:ntf_01M89Z2N6WD5VY8YZNXHACR85B params:map[name:Bob] recipient:bob@example.com status:QUEUED template:welcome updated_at:2026-11-25T18:21:52.732394Z]
---- FAIL: TestSameKeyDifferentBodyIs422 (0.42s)
-    idempotency_test.go:79: request 1: 202 "ntf_01M89Z2NH2S28YFZPR6J841MM3" (first was "ntf_01M89Z2NH02C0C0MV3QH0VVKMY")
---- FAIL: TestConcurrentSameKeyStoresOneRow (0.30s)
-    idempotency_test.go:138: notifications stored: 2, provider deliveries: 2
-    idempotency_test.go:140: the provider delivered 2 emails for one signup (notifications stored: 2)
---- FAIL: TestRetryAfterTimeoutSendsOnce (0.86s)
+    idempotency_test.go:29: same key gave two notifications: ntf_01M8A0P5EZFKSPA614NHYTNC04 and ntf_01M8A0P5FBGXCTYMGAD185H323
+--- FAIL: TestSameKeySameBodyReturnsTheSameNotification (0.27s)
+    idempotency_test.go:47: got 202 map[attempts:0 channel:email client_id:t created_at:2026-11-25T18:50:00.820445Z id:ntf_01M8A0P5QME3KXW0S7PFQS3F97 params:map[name:Bob] recipient:bob@example.com status:QUEUED template:welcome updated_at:2026-11-25T18:50:00.820445Z]
+--- FAIL: TestSameKeyDifferentBodyIs422 (0.24s)
+    idempotency_test.go:80: request 1: 202 "ntf_01M8A0P5YPC3ZBA31TGSB1FESK" (first was "ntf_01M8A0P5YN7WP03HYG8647YKJA")
+--- FAIL: TestConcurrentSameKeyStoresOneRow (0.26s)
+    idempotency_test.go:139: notifications stored: 2, provider deliveries: 2
+    idempotency_test.go:141: the provider delivered 2 emails for one signup (notifications stored: 2)
+--- FAIL: TestRetryAfterTimeoutSendsOnce (0.87s)
 FAIL
-FAIL	github.com/suyi5179-collab/dispatchd/internal/api	2.154s
+FAIL	./internal/api	1.914s
 FAIL

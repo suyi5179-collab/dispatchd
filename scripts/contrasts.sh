@@ -13,9 +13,9 @@ export DISPATCHD_RESULTS_DIR=$PWD/$out
 status=0
 run() { # name sabotage package test-regex
   local name=$1 sab=$2 pkg=$3 re=$4
-  go test -count=1 -v -run "$re" "$pkg" 2>&1 | grep -E '^\s+\w+_test\.go:|^(--- |ok|FAIL)' > "$out/contrast-$name-on.txt"
+  go test -count=1 -v -run "$re" "$pkg" 2>&1 | grep -E '^\s+\w+_test\.go:|^(--- |ok|FAIL)' | sed -E 's#github.com/[^/]+/dispatchd/#./#' > "$out/contrast-$name-on.txt"
   local on=${PIPESTATUS[0]}
-  DISPATCHD_SABOTAGE=$sab go test -count=1 -v -run "$re" "$pkg" 2>&1 | grep -E '^\s+\w+_test\.go:|^(--- |ok|FAIL)' > "$out/contrast-$name-off.txt"
+  DISPATCHD_SABOTAGE=$sab go test -count=1 -v -run "$re" "$pkg" 2>&1 | grep -E '^\s+\w+_test\.go:|^(--- |ok|FAIL)' | sed -E 's#github.com/[^/]+/dispatchd/#./#' > "$out/contrast-$name-off.txt"
   local off=${PIPESTATUS[0]}
   if [ "$on" -eq 0 ] && [ "$off" -ne 0 ]; then
     echo "✓ $name: passes with the protection, fails without it"

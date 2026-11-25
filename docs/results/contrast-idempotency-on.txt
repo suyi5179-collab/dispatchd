@@ -1,6 +1,6 @@
---- PASS: TestSameKeySameBodyReturnsTheSameNotification (0.61s)
---- PASS: TestSameKeyDifferentBodyIs422 (0.30s)
---- PASS: TestConcurrentSameKeyStoresOneRow (0.34s)
-    idempotency_test.go:138: notifications stored: 1, provider deliveries: 1
---- PASS: TestRetryAfterTimeoutSendsOnce (0.91s)
-ok  	github.com/suyi5179-collab/dispatchd/internal/api	2.446s
+--- PASS: TestSameKeySameBodyReturnsTheSameNotification (0.60s)
+--- PASS: TestSameKeyDifferentBodyIs422 (0.37s)
+--- PASS: TestConcurrentSameKeyStoresOneRow (0.28s)
+    idempotency_test.go:139: notifications stored: 1, provider deliveries: 1
+--- PASS: TestRetryAfterTimeoutSendsOnce (0.83s)
+ok  	./internal/api	2.348s

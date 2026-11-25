@@ -79,26 +79,26 @@ worker 启动时、以及每次 Kafka 给它分到分区时，都调 `Reload`：
 - 空堆睡一百毫秒，醒来零次；插一个、等它到期，正好一次定时器 + 一次 kick；再插一个更晚的，不会多醒。
 
 重试风暴（`TestRetriesAfterAnOutageDoNotArriveAsOneSpike`）：
-两百个通知积压，worker 在 provider 宕机时开始消费，所有第一次尝试几乎同时失败。
-一秒半后 provider 恢复，但像真的刚恢复的服务一样，每秒只扛两百个请求，多了回 429。
+两百个通知积压，worker 在 provider 宕机时开始消费，所有第一次尝试几乎同时失败。退避基数五百毫秒、封顶八秒。
+一秒半后 provider 恢复，但像真的刚恢复的服务一样，每秒只扛一百个请求（突发十个），多了回 429。
 
 ```text
 开 jitter：
-  after recovery: busiest 100 ms 30 requests, 1 rejected with 429
-  requests per 100 ms after recovery: 16 16 23 30 22 18 9 7 11 9 4 3 3 3 2 3 5 1 1 4 4 2 2 0 …
-  provider requests in total: 874; all delivered after 5.88s
+  after recovery: busiest 100 ms 20 requests, 29 rejected with 429
+  requests per 100 ms after recovery: 20 13 13 16 15 12 11 13 4 6 8 16 8 10 6 6 5 5 3 3 0 4 0 1 2 3 1 3 3 1 5 …
+  provider requests in total: 855; all delivered after 9.27s
+  --- PASS
 关 jitter（DISPATCHD_SABOTAGE=jitter）：
-  after recovery: busiest 100 ms 66 requests, 129 rejected with 429
-  requests per 100 ms after recovery: 17 2 42 47 66 26 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 30 38 30 0 …
-  provider requests in total: 929; all delivered after 10.01s
-  --- FAIL: retry storm: the recovering provider had to reject 129 requests (limit 40)
+  after recovery: busiest 100 ms 45 requests, 237 rejected with 429
+  requests per 100 ms after recovery: 20 38 28 45 28 41 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 13 26 31 27 34 5 0 …
+  provider requests in total: 837; all delivered after 16.28s
+  --- FAIL: retry storm: the recovering provider had to reject 237 requests (limit 60)
 ```
 
-关掉 jitter，请求成波地来：一波打满、一秒多全静、再一波。被拒的一百多个请求又在同一时刻一起重试。
-开着 jitter，曲线是平的，几乎不被拒，全部送达反而更快。
+关掉 jitter，请求成波地来：一波打满、一秒半全静、再一波。被拒的二百多个请求又在同一时刻一起重试。
+开着 jitter，曲线是平的，被拒的少得多，全部送达反而更快（9.3 秒对 16.3 秒）。
 
-注意一个反直觉的地方：第一版测试里我没有限制 provider 的容量，结果关不关 jitter 都是绿的。
-见 `docs/problems.md` 的 q03。
+这个测试改过两次才变得可信：第一版关不关 jitter 都是绿的（见 `docs/problems.md` 的 q03），第二版余量太小、全量并行跑时偶尔红（q04）。
 
 ## 其他测试
 

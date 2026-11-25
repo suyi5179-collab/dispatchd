@@ -51,16 +51,16 @@ compose 里默认 email 四十每秒、push 八十每秒，可以用 `DISPATCHD_
 
 ```text
 开着令牌桶：
-  100 notifications: map[DELIVERED:100] in 5.5s; provider got 101 requests, 1 of them 429; busiest second 19; longest token wait 1812 ms
+  100 notifications: map[DELIVERED:100] in 5.41s; provider got 100 requests, 0 of them 429; busiest second 22; longest token wait 1762 ms
   --- PASS
 关掉（DISPATCHD_SABOTAGE=ratelimit）：
-  100 notifications: map[DELIVERED:100] in 6.1s; provider got 508 requests, 408 of them 429; busiest second 311; longest token wait 0 ms
-  --- FAIL: the provider answered 429 408 times (limit 5)
+  100 notifications: map[DELIVERED:100] in 5.72s; provider got 528 requests, 428 of them 429; busiest second 327; longest token wait 0 ms
+  --- FAIL: the provider answered 429 428 times (limit 5)
 ```
 
 关掉令牌桶以后，最后也全送到了（429 会按退避重试），总时间也差不多。
-可 provider 多挨了四百零八次请求，最忙的一秒是三百一十一个，是它配额的十五倍。真实的 provider 会因此封你的 key。
-开着令牌桶：最忙的一秒十九个，正好在配额下面，只有一次 429。
+可 provider 多挨了四百二十八次请求，最忙的一秒是三百二十七个，是它配额的十六倍。真实的 provider 会因此封你的 key。
+开着令牌桶：最忙的一秒二十二个（桶里攒着的五个加上每秒补的十八个），一次 429 都没有。
 
 ## 和上一章的 jitter 测试是什么关系？
 

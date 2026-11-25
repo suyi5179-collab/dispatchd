@@ -259,7 +259,7 @@
   "part": "p6-ops",
   "action": "show",
   "highlight": "[data-testid=storm-jitter-rejected]",
-  "text": "打开 jitter，同样的场景，被拒的少了一个数量级。说明 jitter 决定了恢复的那一刻会不会再挂一次。",
+  "text": "打开 jitter，同样的场景，被拒的只有原来的八分之一左右。说明 jitter 决定了恢复的那一刻会不会再挂一次。",
   "shape": "circle"
  },
  {
