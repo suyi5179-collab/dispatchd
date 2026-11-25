@@ -4,6 +4,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -12,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/suyi5179-collab/dispatchd/internal/ids"
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
 )
@@ -92,31 +92,6 @@ func (q *Request) validate() error {
 	return nil
 }
 
-func (s *Server) create(w http.ResponseWriter, r *http.Request) {
-	var req Request
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
-		Error(w, 400, "invalid JSON: "+err.Error())
-		return
-	}
-	if err := req.validate(); err != nil {
-		Error(w, 400, err.Error())
-		return
-	}
-	c := ClientFrom(r.Context())
-	params, _ := json.Marshal(req.Params)
-	n := &store.Notification{ID: ids.New("ntf_"), ClientID: c.ID, Channel: req.Channel, Recipient: req.Recipient, Template: req.Template,
-		Params: params, Status: store.StatusQueued, CreatedAt: time.Now().UTC()}
-	n.UpdatedAt = n.CreatedAt
-	if err := store.InsertNotification(r.Context(), s.Store.DB, n); err != nil {
-		s.Log.Error("insert", "err", err)
-		Error(w, 500, "could not store the notification")
-		return
-	}
-	_ = s.Store.AddEvent(r.Context(), n.ID, "accepted", "", store.StatusQueued, map[string]any{"request": req})
-	s.Enqueue(context.WithoutCancel(r.Context()), n.ID)
-	JSON(w, 202, n)
-}
-
 func (s *Server) get(w http.ResponseWriter, r *http.Request) {
 	c := ClientFrom(r.Context())
 	n, err := s.Store.Notification(r.Context(), c.ID, r.PathValue("id"))
@@ -152,4 +127,29 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("GET /v1/notifications/{id}", s.auth(s.get))
 	mux.HandleFunc("GET /v1/notifications", s.auth(s.list))
 	return mux
+}
+
+// afterInsert runs inside the create transaction (the outbox row goes
+// here from chapter 03).
+func (s *Server) afterInsert(ctx context.Context, tx *sql.Tx, n *store.Notification) error {
+	return nil
+}
+
+// replayed counts idempotent replays (a metric from chapter 06).
+func (s *Server) replayed() {}
+
+// ExpireKeys deletes idempotency keys older than ttl, every interval.
+func (s *Server) ExpireKeys(ctx context.Context, ttl, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if n, err := s.Store.ExpireIdem(ctx, ttl); err == nil && n > 0 {
+				s.Log.Info("expired idempotency keys", "n", n)
+			}
+		}
+	}
 }

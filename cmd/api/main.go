@@ -54,6 +54,7 @@ func main() {
 		}()
 	}
 	srv := &api.Server{Store: st, Log: log, Enqueue: func(_ context.Context, id string) { queue <- id }}
+	go srv.ExpireKeys(ctx, 24*time.Hour, 10*time.Minute)
 	addr := config.Env("DISPATCHD_API_ADDR", ":8850")
 	hs := &http.Server{Addr: addr, Handler: srv.Routes(), ReadHeaderTimeout: 5 * time.Second}
 	go func() {

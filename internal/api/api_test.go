@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -49,6 +51,13 @@ func newStack(t *testing.T) *stack {
 
 func (s *stack) do(t *testing.T, method, path string, body any) (int, map[string]any) {
 	t.Helper()
+	code, out, _ := s.doKey(t, method, path, body, fmt.Sprintf("k-%d", rand.Int64()))
+	return code, out
+}
+
+// doKey sends one request with an explicit Idempotency-Key.
+func (s *stack) doKey(t *testing.T, method, path string, body any, idem string) (int, map[string]any, http.Header) {
+	t.Helper()
 	var rd io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
@@ -56,6 +65,9 @@ func (s *stack) do(t *testing.T, method, path string, body any) (int, map[string
 	}
 	req, _ := http.NewRequest(method, s.api.URL+path, rd)
 	req.Header.Set("Authorization", "Bearer "+key)
+	if idem != "" {
+		req.Header.Set("Idempotency-Key", idem)
+	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +75,7 @@ func (s *stack) do(t *testing.T, method, path string, body any) (int, map[string
 	defer resp.Body.Close()
 	var out map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
-	return resp.StatusCode, out
+	return resp.StatusCode, out, resp.Header
 }
 
 func (s *stack) waitStatus(t *testing.T, id string, want string) map[string]any {
