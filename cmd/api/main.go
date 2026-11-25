@@ -1,4 +1,4 @@
-// api serves the notification API.
+// api serves the notification API and runs the outbox relay.
 package main
 
 import (
@@ -13,9 +13,9 @@ import (
 
 	"github.com/suyi5179-collab/dispatchd/internal/api"
 	"github.com/suyi5179-collab/dispatchd/internal/config"
-	"github.com/suyi5179-collab/dispatchd/internal/provider"
+	"github.com/suyi5179-collab/dispatchd/internal/queue"
+	"github.com/suyi5179-collab/dispatchd/internal/relay"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
-	"github.com/suyi5179-collab/dispatchd/internal/worker"
 )
 
 func main() {
@@ -36,24 +36,22 @@ func main() {
 		log.Error("seed clients", "err", err)
 		os.Exit(1)
 	}
-
-	// Chapter 01: deliver in-process. A buffered channel and a few
-	// goroutines; a crash loses whatever is in the channel.
-	d := &worker.Deliverer{Store: st, Log: log, Providers: map[string]*provider.Client{
-		"email": provider.NewClient("email", config.Env("DISPATCHD_EMAIL_URL", "http://localhost:8851"), 5*time.Second),
-		"push":  provider.NewClient("push", config.Env("DISPATCHD_PUSH_URL", "http://localhost:8852"), 5*time.Second),
-	}}
-	queue := make(chan string, 1024)
-	for i := 0; i < 4; i++ {
-		go func() {
-			for id := range queue {
-				if _, err := d.Deliver(ctx, id); err != nil {
-					log.Error("deliver", "id", id, "err", err)
-				}
-			}
-		}()
+	brokers := queue.Brokers(config.Env("DISPATCHD_KAFKA_BROKERS", "localhost:19193"))
+	topics := queue.Topics{Prefix: config.Env("DISPATCHD_TOPIC_PREFIX", "")}
+	if err := queue.EnsureTopics(ctx, brokers, 3, topics.All()...); err != nil {
+		log.Error("topics", "err", err)
+		os.Exit(1)
 	}
-	srv := &api.Server{Store: st, Log: log, Enqueue: func(_ context.Context, id string) { queue <- id }}
+	kc, err := queue.Producer(brokers)
+	if err != nil {
+		log.Error("kafka", "err", err)
+		os.Exit(1)
+	}
+	defer kc.Close()
+	rl := relay.New(st, kc, log)
+	go rl.Run(ctx)
+
+	srv := &api.Server{Store: st, Log: log, Topics: topics, Enqueue: func(context.Context, string) { rl.Wake() }}
 	go srv.ExpireKeys(ctx, 24*time.Hour, 10*time.Minute)
 	addr := config.Env("DISPATCHD_API_ADDR", ":8850")
 	hs := &http.Server{Addr: addr, Handler: srv.Routes(), ReadHeaderTimeout: 5 * time.Second}

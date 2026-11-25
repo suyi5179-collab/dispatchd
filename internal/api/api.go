@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
+	"github.com/suyi5179-collab/dispatchd/internal/queue"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
 )
 
@@ -21,9 +22,12 @@ import (
 type Server struct {
 	Store *store.Store
 	Log   *slog.Logger
-	// Enqueue hands a stored notification to delivery (chapter 01: an
-	// in-process channel; chapter 03 replaces it with the outbox).
+	// Enqueue is called after a new notification is committed. With the
+	// outbox it only wakes the relay; the message itself is already safe
+	// in the outbox table.
 	Enqueue func(ctx context.Context, id string)
+	// Topics names the Kafka topic for each channel.
+	Topics queue.Topics
 }
 
 type ctxKey struct{}
@@ -129,11 +133,14 @@ func (s *Server) Routes() *http.ServeMux {
 	return mux
 }
 
-// afterInsert runs inside the create transaction (the outbox row goes
-// here from chapter 03).
+// afterInsert runs inside the create transaction: the outbox row commits
+// together with the notification, or neither does.
+// @learn:outbox-write
 func (s *Server) afterInsert(ctx context.Context, tx *sql.Tx, n *store.Notification) error {
-	return nil
+	return store.InsertOutbox(ctx, tx, s.Topics.For(n.Channel), store.Message{NotificationID: n.ID, Channel: n.Channel, CreatedAt: n.CreatedAt})
 }
+
+// @learn:end outbox-write
 
 // replayed counts idempotent replays (a metric from chapter 06).
 func (s *Server) replayed() {}

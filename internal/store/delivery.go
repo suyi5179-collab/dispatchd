@@ -16,7 +16,7 @@ var claimable = []any{StatusQueued}
 // UPDATE matches, so the other learns it lost and must not send. This is
 // the worker-side dedup: it is keyed on (notification id, attempt).
 // @learn:claim
-func (s *Store) Claim(ctx context.Context, id string, prev int, provider string) (bool, error) {
+func (s *Store) Claim(ctx context.Context, id string, prev int, provider string, lease time.Duration) (bool, error) {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -40,7 +40,7 @@ func (s *Store) Claim(ctx context.Context, id string, prev int, provider string)
 	if !ok {
 		return false, nil
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE notifications SET status=?, attempts=?, updated_at=? WHERE id=?`, StatusSending, prev+1, now, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE notifications SET status=?, attempts=?, lease_until=?, updated_at=? WHERE id=?`, StatusSending, prev+1, now.Add(lease), now, id); err != nil {
 		return false, err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO delivery_attempts (notification_id, attempt, provider, started_at, outcome) VALUES (?,?,?,?,?)`,
@@ -84,8 +84,8 @@ func (s *Store) Finish(ctx context.Context, id string, o Outcome, eventData map[
 	if o.NewStatus == StatusDelivered {
 		delivered = now
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE notifications SET status=?, last_error=?, updated_at=?, delivered_at=COALESCE(?, delivered_at) WHERE id=? AND attempts=?`,
-		o.NewStatus, jsonOrNull(o.LastError), now, delivered, id, o.Attempt); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE notifications SET status=?, last_error=?, lease_until=NULL, updated_at=?, delivered_at=COALESCE(?, delivered_at) WHERE id=? AND attempts=? AND status=?`,
+		o.NewStatus, jsonOrNull(o.LastError), now, delivered, id, o.Attempt, StatusSending); err != nil {
 		return err
 	}
 	if eventData == nil {
@@ -105,3 +105,62 @@ func RawJSON(v any) json.RawMessage {
 	b, _ := json.Marshal(v)
 	return b
 }
+
+// Leased is a notification some worker started an attempt on.
+type Leased struct {
+	ID         string
+	Attempts   int
+	LeaseUntil time.Time
+}
+
+// InFlight lists notifications in SENDING: attempts that some worker
+// started. After a crash these are the ones nobody will finish.
+func (s *Store) InFlight(ctx context.Context) ([]Leased, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id, attempts, COALESCE(lease_until, updated_at) FROM notifications WHERE status=?`, StatusSending)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Leased
+	for rows.Next() {
+		var l Leased
+		if err := rows.Scan(&l.ID, &l.Attempts, &l.LeaseUntil); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
+// ExpireLease gives up on an attempt whose worker stopped renewing it
+// (it crashed): the attempt is marked UNKNOWN, because the provider may
+// or may not have received it, and the notification goes back to
+// toStatus. It only matches if the lease really ran out and nobody moved
+// the row since.
+// @learn:expire-lease
+func (s *Store) ExpireLease(ctx context.Context, l Leased, toStatus string, nextAt *time.Time) (bool, error) {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	res, err := tx.ExecContext(ctx, `UPDATE notifications SET status=?, lease_until=NULL, next_attempt_at=?, updated_at=? WHERE id=? AND status=? AND attempts=? AND lease_until<=?`,
+		toStatus, nextAt, now, l.ID, StatusSending, l.Attempts, now)
+	if err != nil {
+		return false, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE delivery_attempts SET outcome='UNKNOWN', finished_at=? WHERE notification_id=? AND attempt=? AND outcome='IN_FLIGHT'`, now, l.ID, l.Attempts); err != nil {
+		return false, err
+	}
+	if err := AddEvent(ctx, tx, l.ID, "lease_expired", StatusSending, toStatus, map[string]any{"attempt": l.Attempts, "lease_until": l.LeaseUntil,
+		"why": "the worker holding this attempt stopped (crash or kill); the provider may or may not have received it, so it is sent again with the same provider idempotency key"}); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
+}
+
+// @learn:end expire-lease

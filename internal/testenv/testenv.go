@@ -14,11 +14,13 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
 
+	"github.com/suyi5179-collab/dispatchd/internal/queue"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
 )
 
@@ -85,4 +87,32 @@ func DSN(t testing.TB, st *store.Store) string {
 	cfg, _ := mysql.ParseDSN(ServerDSN())
 	cfg.DBName = name
 	return cfg.FormatDSN()
+}
+
+// KafkaBrokers the tests use.
+func KafkaBrokers() []string {
+	if v := os.Getenv("DISPATCHD_TEST_KAFKA"); v != "" {
+		return strings.Split(v, ",")
+	}
+	return []string{"localhost:19193"}
+}
+
+// Kafka creates a fresh pair of topics for one test (a random prefix)
+// and deletes them afterwards.
+func Kafka(t testing.TB) (brokers []string, topics queue.Topics) {
+	t.Helper()
+	Integration(t)
+	brokers = KafkaBrokers()
+	topics = queue.Topics{Prefix: fmt.Sprintf("t%d%06d.", time.Now().Unix()%1_000_000, rand.IntN(1_000_000))}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := queue.EnsureTopics(ctx, brokers, 3, topics.All()...); err != nil {
+		t.Fatalf("Kafka for integration tests is not reachable at %v (run scripts/test.sh): %v", brokers, err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = queue.DeleteTopics(ctx, brokers, topics.All()...)
+	})
+	return brokers, topics
 }
