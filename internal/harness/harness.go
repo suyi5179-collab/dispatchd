@@ -112,7 +112,8 @@ func Start(t testing.TB, opt Options) *Stack {
 	t.Cleanup(kc.Close)
 	rl := relay.New(st, kc, s.Log)
 	go rl.Run(ctx)
-	srv := &api.Server{Store: st, Log: s.Log, Topics: topics, Enqueue: func(context.Context, string) { rl.Wake() }}
+	srv := &api.Server{Store: st, Log: s.Log, Topics: topics, Enqueue: func(context.Context, string) { rl.Wake() },
+		ProviderURLs: map[string]string{"email": s.EmailURL, "push": s.PushURL}}
 	s.Handler = srv.Routes()
 	s.API = httptest.NewServer(s.Handler)
 	t.Cleanup(s.API.Close)
@@ -148,21 +149,20 @@ func (s *Stack) StartWorker(name string) {
 	s.T.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	d := s.Deliverer(name)
-	kc, err := worker.ConsumerClient(s.Brokers, s.Group, s.Topics.All(), 6*time.Second, func() { go func() { _, _ = d.Reload(ctx) }() })
+	cs, err := worker.NewConsumers(s.Brokers, s.Group, s.Topics, 6*time.Second, d, s.Log, s.Opt.Concurrency, name, func() { go func() { _, _ = d.Reload(ctx) }() })
 	if err != nil {
 		s.T.Fatal(err)
 	}
-	c := &worker.Consumer{Client: kc, D: d, Log: s.Log, Concurrency: s.Opt.Concurrency, Name: name}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		go d.RunScheduler(ctx)
-		if err := c.Run(ctx); err != nil {
+		if err := worker.RunAll(ctx, cs); err != nil {
 			s.T.Logf("worker %s stopped: %v", name, err)
 		}
 	}()
 	s.mu.Lock()
-	s.workers[name] = func() { cancel(); <-done; kc.Close() }
+	s.workers[name] = func() { cancel(); <-done; worker.CloseAll(cs) }
 	s.mu.Unlock()
 }
 

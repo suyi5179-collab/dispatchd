@@ -1,0 +1,217 @@
+{
+  "anchor-lookup": {
+    "path": "frontend/src/source.ts",
+    "start": 14,
+    "end": 23
+  },
+  "anchor-refs": {
+    "path": "scripts/check_anchors.mjs",
+    "start": 21,
+    "end": 48
+  },
+  "claim": {
+    "path": "internal/store/delivery.go",
+    "start": 19,
+    "end": 59
+  },
+  "claim-v1": {
+    "path": "docs/problems/snippets/claim_v1.go",
+    "start": 8,
+    "end": 25
+  },
+  "classify": {
+    "path": "internal/provider/provider.go",
+    "start": 133,
+    "end": 158
+  },
+  "consume": {
+    "path": "internal/worker/consumer.go",
+    "start": 52,
+    "end": 76
+  },
+  "consume-v1": {
+    "path": "docs/problems/snippets/consume_v1.go",
+    "start": 9,
+    "end": 24
+  },
+  "deliver": {
+    "path": "internal/worker/deliver.go",
+    "start": 63,
+    "end": 99
+  },
+  "expire-lease": {
+    "path": "internal/store/delivery.go",
+    "start": 165,
+    "end": 189
+  },
+  "fake-provider": {
+    "path": "internal/fakeprovider/fakeprovider.go",
+    "start": 153,
+    "end": 217
+  },
+  "full-jitter": {
+    "path": "internal/backoff/backoff.go",
+    "start": 55,
+    "end": 77
+  },
+  "heap-push": {
+    "path": "internal/delayq/delayq.go",
+    "start": 62,
+    "end": 86
+  },
+  "heap-run": {
+    "path": "internal/delayq/delayq.go",
+    "start": 108,
+    "end": 143
+  },
+  "heap-tests": {
+    "path": "internal/delayq/delayq_test.go",
+    "start": 70,
+    "end": 105
+  },
+  "idem-bytes": {
+    "path": "internal/store/migrations/004_idem_response_bytes.sql",
+    "start": 5,
+    "end": 5
+  },
+  "idem-json-column": {
+    "path": "internal/store/migrations/002_idempotency.sql",
+    "start": 11,
+    "end": 11
+  },
+  "idem-sabotage": {
+    "path": "internal/api/create.go",
+    "start": 51,
+    "end": 52
+  },
+  "idempotency": {
+    "path": "internal/api/create.go",
+    "start": 91,
+    "end": 136
+  },
+  "isolation-test": {
+    "path": "internal/harness/isolation_test.go",
+    "start": 17,
+    "end": 39
+  },
+  "learn-sample": {
+    "path": "internal/api/learn.go",
+    "start": 71,
+    "end": 94
+  },
+  "learn-stages": {
+    "path": "internal/api/learn.go",
+    "start": 130,
+    "end": 271
+  },
+  "no-jitter": {
+    "path": "internal/backoff/backoff.go",
+    "start": 61,
+    "end": 62
+  },
+  "observe": {
+    "path": "internal/worker/deliver.go",
+    "start": 205,
+    "end": 223
+  },
+  "one-consumer-v1": {
+    "path": "docs/problems/snippets/worker_main_v1.go",
+    "start": 11,
+    "end": 15
+  },
+  "outbox-write": {
+    "path": "internal/api/api.go",
+    "start": 146,
+    "end": 149
+  },
+  "per-channel-consumers": {
+    "path": "internal/worker/consumers.go",
+    "start": 23,
+    "end": 35
+  },
+  "ratelimit-sabotage": {
+    "path": "internal/ratelimit/bucket.go",
+    "start": 70,
+    "end": 72
+  },
+  "ratelimit-test": {
+    "path": "internal/harness/ratelimit_test.go",
+    "start": 18,
+    "end": 42
+  },
+  "record-pacing": {
+    "path": "video/record.mjs",
+    "start": 150,
+    "end": 161
+  },
+  "relay-batch": {
+    "path": "internal/store/outbox.go",
+    "start": 51,
+    "end": 98
+  },
+  "reload": {
+    "path": "internal/worker/deliver.go",
+    "start": 183,
+    "end": 200
+  },
+  "reload-test": {
+    "path": "internal/harness/retry_test.go",
+    "start": 63,
+    "end": 84
+  },
+  "replay-bytes-test": {
+    "path": "internal/api/idempotency_test.go",
+    "start": 155,
+    "end": 175
+  },
+  "restart-test": {
+    "path": "internal/harness/restart_test.go",
+    "start": 70,
+    "end": 123
+  },
+  "runbook-shortcuts": {
+    "path": "scripts/runbook.sh",
+    "start": 5,
+    "end": 7
+  },
+  "runbook-v1": {
+    "path": "docs/problems/snippets/shell_v1.sh",
+    "start": 6,
+    "end": 10
+  },
+  "schedule-retry": {
+    "path": "internal/worker/deliver.go",
+    "start": 108,
+    "end": 146
+  },
+  "storm-test": {
+    "path": "internal/harness/retry_test.go",
+    "start": 96,
+    "end": 150
+  },
+  "storm-v1": {
+    "path": "docs/problems/snippets/storm_v1_test.go",
+    "start": 11,
+    "end": 24
+  },
+  "timeout-retry-test": {
+    "path": "internal/api/idempotency_test.go",
+    "start": 95,
+    "end": 144
+  },
+  "token-bucket": {
+    "path": "internal/ratelimit/bucket.go",
+    "start": 55,
+    "end": 84
+  },
+  "ui-pid": {
+    "path": "scripts/ui.sh",
+    "start": 14,
+    "end": 17
+  },
+  "ui-v1": {
+    "path": "docs/problems/snippets/shell_v1.sh",
+    "start": 14,
+    "end": 18
+  }
+}

@@ -62,8 +62,9 @@ func main() {
 			"push":  provider.NewClient("push", config.Env("DISPATCHD_PUSH_URL", "http://localhost:8852"), timeout),
 		}}).Init()
 	reload := make(chan struct{}, 1)
-	kc, err := worker.ConsumerClient(brokers, config.Env("DISPATCHD_GROUP", "dispatchd-workers"), topics.All(), config.Duration("DISPATCHD_SESSION_TIMEOUT", 10*time.Second),
-		func() {
+	group := config.Env("DISPATCHD_GROUP", "dispatchd-workers")
+	consumers, err := worker.NewConsumers(brokers, group, topics, config.Duration("DISPATCHD_SESSION_TIMEOUT", 10*time.Second), d, log,
+		config.Int("DISPATCHD_CONCURRENCY", 32), name, func() {
 			select {
 			case reload <- struct{}{}:
 			default:
@@ -73,7 +74,7 @@ func main() {
 		log.Error("kafka", "err", err)
 		os.Exit(1)
 	}
-	defer kc.Close()
+	defer worker.CloseAll(consumers)
 
 	go d.RunScheduler(ctx)
 	go func() {
@@ -91,8 +92,9 @@ func main() {
 		}
 	}()
 
-	group := config.Env("DISPATCHD_GROUP", "dispatchd-workers")
-	go worker.WatchLag(ctx, log, brokers, group, topics.All(), 5*time.Second)
+	for _, ch := range worker.Channels {
+		go worker.WatchLag(ctx, log, brokers, worker.GroupFor(group, ch), []string{topics.For(ch)}, 5*time.Second)
+	}
 	metrics.GaugeFunc("dispatchd_delay_queue_size", "Retries and lease checks waiting in this worker's min-heap.", nil, func() float64 { return float64(d.Delay.Len()) })
 	metrics.CounterFunc("dispatchd_delay_queue_wakeups_total", "Times the delay queue goroutine woke up.", prometheus.Labels{"reason": "timer"}, func() float64 { return float64(d.Delay.TimerFires.Load()) })
 	metrics.CounterFunc("dispatchd_delay_queue_wakeups_total", "Times the delay queue goroutine woke up.", prometheus.Labels{"reason": "earlier_item"}, func() float64 { return float64(d.Delay.Kicks.Load()) })
@@ -108,9 +110,8 @@ func main() {
 	go func() { _ = hs.ListenAndServe() }()
 	defer hs.Close()
 
-	c := &worker.Consumer{Client: kc, D: d, Log: log, Concurrency: config.Int("DISPATCHD_CONCURRENCY", 32), Name: name}
 	log.Info("worker consuming", "topics", topics.All())
-	if err := c.Run(ctx); err != nil {
+	if err := worker.RunAll(ctx, consumers); err != nil {
 		log.Error("consumer stopped", "err", err)
 		os.Exit(1)
 	}

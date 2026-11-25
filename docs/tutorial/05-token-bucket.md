@@ -1,6 +1,6 @@
 # 05 每个 provider 一个令牌桶
 
-> tag：`step-05`
+> 讲解视频：[p3-token 令牌桶](../videos/p3-token.mp4) · tag：`step-05`
 
 ## 这一章解决什么问题？
 

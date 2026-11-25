@@ -1,11 +1,9 @@
 # dispatchd runbook
 
-Every command here runs against this repository's compose stack (`-p dispatchd`). Shortcuts used below (functions, so they work in bash and zsh alike; a `DC="docker-compose -p dispatchd"` variable does not word-split in zsh):
+Every command here runs against this repository's compose stack (`-p dispatchd`). Load the shortcuts first ([`scripts/runbook.sh`](../scripts/runbook.sh#anchor=runbook-shortcuts): shell functions, so they work in bash and zsh alike):
 
 ```bash
-dc()  { docker-compose -p dispatchd "$@"; }
-SQL() { dc exec -T mysql mysql -udispatchd -pdispatchd dispatchd -e "$1" 2>/dev/null; }
-KAFKA_GROUPS() { dc exec -T kafka /opt/kafka/bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 "$@"; }
+source scripts/runbook.sh   # dc …, SQL "…", KAFKA_GROUPS …
 ```
 
 Dashboards: Grafana http://localhost:3092 (dashboard "dispatchd"), Prometheus http://localhost:9192/alerts.
@@ -61,11 +59,12 @@ Lower the bucket below quota ÷ number of workers, e.g. `DISPATCHD_RATE_EMAIL=15
 Symptoms: `DispatchdKafkaLagHigh` (or `DispatchdOutboxBacklog`).
 
 ```bash
-KAFKA_GROUPS --describe --group dispatchd-workers
+KAFKA_GROUPS --describe --group dispatchd-workers.email   # and dispatchd-workers.push
 SQL "SELECT COUNT(*) FROM outbox WHERE published_at IS NULL"
 ```
 
 - **Outbox rows pile up, lag is flat:** the API's relay cannot publish. Check `dc logs api | grep relay` and `dc ps kafka`. Notifications are safe in MySQL; the relay sweeps every second and catches up once Kafka is back.
+- One consumer group per channel (`dispatchd-workers.email`, `dispatchd-workers.push`), each with its own poll loop, so a throttled email provider does not hold up push.
 - **Lag grows, CONSUMER-ID is empty:** no worker is in the group → next section.
 - **Lag grows, consumers present:** workers are slower than intake. Check token wait (`dispatchd_ratelimit_wait_seconds`): if workers wait on the bucket, the provider quota is the bottleneck and more workers will not help. Otherwise add a worker (two host ports are reserved):
   ```bash

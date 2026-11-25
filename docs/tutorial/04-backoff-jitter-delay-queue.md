@@ -1,6 +1,6 @@
 # 04 退避、jitter 和最小堆延迟队列
 
-> tag：`step-04`
+> 讲解视频：[p4-retry 退避和延迟堆](../videos/p4-retry.mp4) · tag：`step-04`
 
 ## 这一章解决什么问题？
 

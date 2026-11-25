@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -147,3 +148,29 @@ func isTimeout(err error) bool {
 	var te interface{ Timeout() bool }
 	return errors.As(err, &te) && te.Timeout()
 }
+
+// A client that compares or signs response bodies must get the same bytes
+// back on a replay, not an equivalent JSON document.
+// @learn:replay-bytes-test
+func TestReplayReturnsTheFirstResponseByteForByte(t *testing.T) {
+	s := newStack(t)
+	send := func() []byte {
+		b, _ := json.Marshal(welcome)
+		req, _ := http.NewRequest("POST", s.api.URL+"/v1/notifications", bytes.NewReader(b))
+		req.Header.Set("Authorization", "Bearer "+key)
+		req.Header.Set("Idempotency-Key", "bytes-1")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		out, _ := io.ReadAll(resp.Body)
+		return out
+	}
+	first, second := send(), send()
+	if !bytes.Equal(first, second) {
+		t.Fatalf("replay body differs:\nfirst:  %s\nsecond: %s", first, second)
+	}
+}
+
+// @learn:end replay-bytes-test

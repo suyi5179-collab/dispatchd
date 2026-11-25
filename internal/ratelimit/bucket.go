@@ -66,9 +66,11 @@ func (b *Bucket) Reserve() (wait time.Duration, left float64) {
 // Wait blocks until the caller may send. If ctx ends first, the token
 // is given back.
 func (b *Bucket) Wait(ctx context.Context) (waited time.Duration, left float64, err error) {
+	// @learn:ratelimit-sabotage
 	if b == nil || config.Sabotaged(config.NoRateLimit) {
-		return 0, 0, nil
+		return 0, 0, nil // no bucket: every request goes straight out
 	}
+	// @learn:end ratelimit-sabotage
 	wait, left := b.Reserve()
 	if wait <= 0 {
 		return 0, left, nil

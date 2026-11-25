@@ -1,6 +1,6 @@
 # 01 最小能跑的通知服务
 
-> tag：`step-01`
+> 讲解视频：[p1-intake 收下请求](../videos/p1-intake.mp4) · tag：`step-01`
 
 ## 这一章解决什么问题？
 

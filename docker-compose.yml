@@ -73,6 +73,8 @@ services:
     environment:
       DISPATCHD_MYSQL_DSN: dispatchd:dispatchd@tcp(mysql:3306)/dispatchd
       DISPATCHD_KAFKA_BROKERS: kafka:9092
+      DISPATCHD_EMAIL_URL: http://email:8851 # fake providers' admin API (UI + learn page)
+      DISPATCHD_PUSH_URL: http://push:8852
       DISPATCHD_API_KEYS: ${DISPATCHD_API_KEYS:-demo:dk_demo_local_only:admin}
     ports: ["8850:8850"]
     depends_on: {mysql: {condition: service_healthy}, kafka: {condition: service_healthy}}

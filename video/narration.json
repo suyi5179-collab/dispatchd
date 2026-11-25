@@ -1,0 +1,272 @@
+[
+ {
+  "id": "s01",
+  "part": "p1-intake",
+  "action": "open",
+  "highlight": ".learn-head h2",
+  "text": "这一段讲通知怎么被收下。我们跟着一个真实的通知，从提交一直走到送达。"
+ },
+ {
+  "id": "s02",
+  "part": "p1-intake",
+  "action": "show",
+  "highlight": "[data-testid=timeline]",
+  "text": "左边是十个阶段。每一步亮起来，是因为后端真的在数据库里写下了那一行，不是前端在播动画。"
+ },
+ {
+  "id": "s03",
+  "part": "p1-intake",
+  "action": "click:[data-testid=learn-start]",
+  "highlight": "[data-testid=learn-start]",
+  "text": "我点提交样例。后端会发一个真实的通知请求，带一个新的幂等键。为了演示重试，provider 会让这个收件人的第一次请求失败。"
+ },
+ {
+  "id": "s04",
+  "part": "p1-intake",
+  "action": "select:submit",
+  "highlight": "[data-testid=step-detail] [data-testid=idem-key-value]",
+  "text": "先看这里，这就是这次请求带的幂等键。为什么先看它？调用方超时以后重试，必须带同一个键，服务端才认得出这是同一件事。"
+ },
+ {
+  "id": "s05",
+  "part": "p1-intake",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=submit-code]",
+  "text": "响应码是二百零二，意思是收下了，但还没发。通知服务是异步的，调用方不用等投递完成。",
+  "shape": "circle"
+ },
+ {
+  "id": "s06",
+  "part": "p1-intake",
+  "action": "select:idempotency",
+  "highlight": "[data-testid=step-detail] [data-testid=idem-row]",
+  "text": "第二步是幂等检查。这是数据库里幂等键表的那一行，主键是调用方加上幂等键。"
+ },
+ {
+  "id": "s07",
+  "part": "p1-intake",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=idem-hash]",
+  "text": "这一列是请求体的指纹。同一个键再来一次，指纹一样就返回第一次的结果，不一样就拒绝。为什么不先查后插？因为重试经常和第一次同时到，两个请求都会查到没有。这一段就讲到这里。"
+ },
+ {
+  "id": "s08",
+  "part": "p2-outbox",
+  "action": "select:persist",
+  "highlight": "[data-testid=step-detail] [data-testid=persist-status]",
+  "text": "这一段讲通知怎么进队列。先看这里，通知这一行的状态是排队中。"
+ },
+ {
+  "id": "s09",
+  "part": "p2-outbox",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=outbox-topic]",
+  "text": "再看右边，outbox 表里同时多了一行，写着要发到哪个 topic。两行在同一个事务里提交，要么都在，要么都不在。"
+ },
+ {
+  "id": "s10",
+  "part": "p2-outbox",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=outbox-created]",
+  "text": "看创建时间，和通知行几乎是同一刻。所以不会出现库里有通知、队列里却没有消息的情况。"
+ },
+ {
+  "id": "s11",
+  "part": "p2-outbox",
+  "action": "select:relay",
+  "highlight": "[data-testid=step-detail] [data-testid=kafka-offset]",
+  "text": "下一步是 relay。它把 outbox 里的行发到卡夫卡，等 broker 确认以后，再把分区和 offset 写回来。这个数字就是这条消息在卡夫卡里的位置。",
+  "shape": "circle"
+ },
+ {
+  "id": "s12",
+  "part": "p2-outbox",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=kafka-message]",
+  "text": "这是消息体本身，只有通知 id 和 channel。内容都在数据库里，消息只是一个提醒：有活要干了。"
+ },
+ {
+  "id": "s13",
+  "part": "p2-outbox",
+  "action": "source:[data-testid=step-detail] a.src-link",
+  "highlight": "[data-testid=step-detail] a.src-link",
+  "text": "每一步都有看源码的链接，指向这次提交里对应的文件和行号。outbox 这一段就讲到这里。"
+ },
+ {
+  "id": "s14",
+  "part": "p3-token",
+  "action": "select:token",
+  "highlight": "[data-testid=step-detail] [data-testid=bucket-rate]",
+  "text": "这一段讲 worker 拿令牌。先看这里，email provider 的令牌桶，每秒补四十个，最多存十个。"
+ },
+ {
+  "id": "s15",
+  "part": "p3-token",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=tokens-left]",
+  "text": "拿完令牌，桶里还剩九个左右。拿不到的时候 worker 会等，而不是直接打过去，吃 provider 的四百二十九。",
+  "shape": "circle"
+ },
+ {
+  "id": "s16",
+  "part": "p3-token",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=claim-transition]",
+  "text": "拿到令牌以后才认领：状态从排队中改成发送中。为什么先拿令牌再认领？等令牌可能要好几秒，认领以后再等，就会吃掉租约。"
+ },
+ {
+  "id": "s17",
+  "part": "p3-token",
+  "action": "click:[data-testid=step-detail] [data-testid=raw-json-toggle]",
+  "highlight": "[data-testid=step-detail] [data-testid=raw-json] pre",
+  "text": "点开这条认领事件，能看到租约的到期时间。worker 如果在这之前死了，别的 worker 会等租约到期以后接手。令牌这一段就讲到这里。"
+ },
+ {
+  "id": "s18",
+  "part": "p4-retry",
+  "action": "select:attempt1",
+  "highlight": "[data-testid=step-detail] [data-testid=attempt1-status]",
+  "text": "这一段讲重试。第一次投递，provider 返回五百零三。",
+  "shape": "circle"
+ },
+ {
+  "id": "s19",
+  "part": "p4-retry",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=attempt1-kind]",
+  "text": "分类是临时失败。五百多、超时、四百二十九都算临时，会重试；其他的四百多算永久失败，再发也没用，就不重试了。"
+ },
+ {
+  "id": "s20",
+  "part": "p4-retry",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=attempt1-body]",
+  "text": "这是 provider 的原始响应。永久失败的时候，这一段会和建议动作一起存下来，告诉值班的人该做什么。"
+ },
+ {
+  "id": "s21",
+  "part": "p4-retry",
+  "action": "select:delay",
+  "highlight": "[data-testid=step-detail] [data-testid=backoff-ceiling]",
+  "text": "接着进延迟堆。先看等待的上限：基数乘以二的幂，第一次失败就是一秒。"
+ },
+ {
+  "id": "s22",
+  "part": "p4-retry",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=backoff-rand]",
+  "text": "再看这个随机数。实际等待是上限乘以它，也就是在零到一秒之间随机抽。为什么要随机？一大批通知同时失败，如果等待都一样，就会同时回来，把刚恢复的 provider 再打挂。",
+  "shape": "circle"
+ },
+ {
+  "id": "s23",
+  "part": "p4-retry",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=next-attempt]",
+  "text": "到期时间先写进数据库，再放进内存里的最小堆。这样 worker 重启了，也能把重试从数据库捞回来。"
+ },
+ {
+  "id": "s24",
+  "part": "p4-retry",
+  "action": "select:retry",
+  "highlight": "[data-testid=step-detail] [data-testid=woken-late]",
+  "text": "到期以后，堆只醒一次。看这里，实际只晚了一两毫秒。没有轮询，也就没有轮询的间隔。",
+  "shape": "circle"
+ },
+ {
+  "id": "s25",
+  "part": "p4-retry",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=attempt2-status]",
+  "text": "第二次投递，provider 返回二百，成功了。重试这一段就讲到这里。",
+  "shape": "circle"
+ },
+ {
+  "id": "s26",
+  "part": "p5-delivered",
+  "action": "select:delivered",
+  "highlight": "[data-testid=step-detail] [data-testid=final-status]",
+  "text": "这一段讲送达和重复提交。先看最终状态，已送达。"
+ },
+ {
+  "id": "s27",
+  "part": "p5-delivered",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=transitions]",
+  "text": "这是完整的状态转移：排队中，发送中，等待重试，再发送中，最后送达。每一次转移都记在事件表里，出了问题可以一步一步对。"
+ },
+ {
+  "id": "s28",
+  "part": "p5-delivered",
+  "action": "click:[data-testid=learn-replay]",
+  "highlight": "[data-testid=learn-replay]",
+  "text": "现在模拟调用方超时以后重试：同一个幂等键，同样的请求体，再提交一次。"
+ },
+ {
+  "id": "s29",
+  "part": "p5-delivered",
+  "action": "select:replay",
+  "highlight": "[data-testid=step-detail] [data-testid=replay-id]",
+  "text": "看返回的通知 id，和第一次一模一样，没有新建通知。"
+ },
+ {
+  "id": "s30",
+  "part": "p5-delivered",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=replay-header]",
+  "text": "响应头标着，这是一次重放。",
+  "shape": "circle"
+ },
+ {
+  "id": "s31",
+  "part": "p5-delivered",
+  "action": "show",
+  "highlight": "[data-testid=step-detail] [data-testid=replay-deliveries]",
+  "text": "再看 provider 那边，实际送达还是一次。调用方重试多少次，用户都只会收到一封邮件。这一段就讲到这里。",
+  "shape": "circle"
+ },
+ {
+  "id": "s32",
+  "part": "p6-ops",
+  "action": "goto:/providers",
+  "highlight": "[data-testid=provider-email] h3",
+  "text": "最后一段讲观测和故障演练。这是 provider 故障页，两个假 provider 都能切换故障模式。"
+ },
+ {
+  "id": "s33",
+  "part": "p6-ops",
+  "action": "show",
+  "highlight": "[data-testid=set-email-fail_5xx]",
+  "text": "比如临时故障、限流、永久失败、慢响应。切完去发一批通知，就能在上面这张图里看到请求怎么到达 provider。"
+ },
+ {
+  "id": "s34",
+  "part": "p6-ops",
+  "action": "show",
+  "highlight": "[data-testid=storm-nojitter-chart]",
+  "text": "往下看仓库里提交的实测。两百个通知同时失败，关掉 jitter，重试成波地回来：一波打满，然后全静，再一波。"
+ },
+ {
+  "id": "s35",
+  "part": "p6-ops",
+  "action": "show",
+  "highlight": "[data-testid=storm-nojitter-rejected]",
+  "text": "看这个数字，这是恢复中的 provider 被迫拒绝的请求数。",
+  "shape": "circle"
+ },
+ {
+  "id": "s36",
+  "part": "p6-ops",
+  "action": "show",
+  "highlight": "[data-testid=storm-jitter-rejected]",
+  "text": "打开 jitter，同样的场景，被拒的少了一个数量级。说明 jitter 决定了恢复的那一刻会不会再挂一次。",
+  "shape": "circle"
+ },
+ {
+  "id": "s37",
+  "part": "p6-ops",
+  "action": "show",
+  "highlight": "[data-testid=storm-jitter-chart]",
+  "text": "曲线是平的。队列深度、投递延迟、错误率这些指标都在 Grafana 里，每一条告警都指向 runbook 的一节。整个讲解就到这里。"
+ }
+]

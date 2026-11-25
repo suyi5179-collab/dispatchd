@@ -1,0 +1,81 @@
+[
+ {
+  "part": "p1-intake",
+  "title": "收下请求：幂等键和唯一约束",
+  "stage": "submit",
+  "stages": [
+   "submit",
+   "idempotency"
+  ],
+  "chapter": "docs/tutorial/02-idempotency-keys.md",
+  "chapters": [
+   "docs/tutorial/01-minimal-service.md",
+   "docs/tutorial/02-idempotency-keys.md"
+  ]
+ },
+ {
+  "part": "p2-outbox",
+  "title": "进队列：同一个事务写 outbox，relay 发到 Kafka",
+  "stage": "persist",
+  "stages": [
+   "persist",
+   "relay"
+  ],
+  "chapter": "docs/tutorial/03-outbox-kafka-workers.md",
+  "chapters": [
+   "docs/tutorial/03-outbox-kafka-workers.md"
+  ]
+ },
+ {
+  "part": "p3-token",
+  "title": "worker 拿令牌，再认领",
+  "stage": "token",
+  "stages": [
+   "token"
+  ],
+  "chapter": "docs/tutorial/05-token-bucket.md",
+  "chapters": [
+   "docs/tutorial/05-token-bucket.md",
+   "docs/tutorial/03-outbox-kafka-workers.md"
+  ]
+ },
+ {
+  "part": "p4-retry",
+  "title": "临时失败：退避、full jitter、最小堆延迟队列",
+  "stage": "delay",
+  "stages": [
+   "attempt1",
+   "delay",
+   "retry"
+  ],
+  "chapter": "docs/tutorial/04-backoff-jitter-delay-queue.md",
+  "chapters": [
+   "docs/tutorial/04-backoff-jitter-delay-queue.md"
+  ]
+ },
+ {
+  "part": "p5-delivered",
+  "title": "送达，以及同一个幂等键再提交一次",
+  "stage": "delivered",
+  "stages": [
+   "delivered",
+   "replay"
+  ],
+  "chapter": "docs/tutorial/07-teaching-mode.md",
+  "chapters": [
+   "docs/tutorial/02-idempotency-keys.md",
+   "docs/tutorial/07-teaching-mode.md"
+  ]
+ },
+ {
+  "part": "p6-ops",
+  "title": "观测与故障演练：重试风暴的对照",
+  "stage": "providers",
+  "stages": [],
+  "chapter": "docs/tutorial/06-observability-runbook.md",
+  "chapters": [
+   "docs/tutorial/06-observability-runbook.md",
+   "docs/tutorial/04-backoff-jitter-delay-queue.md"
+  ]
+ }
+]

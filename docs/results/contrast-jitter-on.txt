@@ -1,0 +1,5 @@
+    retry_test.go:143: 200 notifications failed together; after recovery: busiest 100 ms 44 requests, 30 rejected with 429
+    retry_test.go:144: requests per 100 ms after recovery: 18 28 44 34 14 20 16 6 4 5 8 4 2 5 5 2 2 1 1 1 0 1 1 1 1 1 3 0 0 0 0 0 0 0 0 0 0 0 1 0 
+    retry_test.go:145: provider requests in total: 791; all delivered after 6.05s
+--- PASS: TestRetriesAfterAnOutageDoNotArriveAsOneSpike (9.13s)
+ok  	github.com/suyi5179-collab/dispatchd/internal/harness	9.423s

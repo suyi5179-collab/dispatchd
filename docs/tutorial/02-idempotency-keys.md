@@ -1,6 +1,6 @@
 # 02 幂等键：调用方重试不再重复发
 
-> tag：`step-02`
+> 讲解视频：[p1-intake 收下请求](../videos/p1-intake.mp4) · [p5-delivered 重复提交](../videos/p5-delivered.mp4) · tag：`step-02`
 
 ## 这一章解决什么问题？
 

@@ -1,0 +1,6 @@
+    ratelimit_test.go:33: 100 notifications: map[DELIVERED:100] in 6.21s; provider got 524 requests, 424 of them 429; busiest second 238; longest token wait 0 ms
+    ratelimit_test.go:39: the provider answered 429 424 times (limit 5)
+--- FAIL: TestTokenBucketKeepsUnderTheProviderQuota (7.96s)
+FAIL
+FAIL	github.com/suyi5179-collab/dispatchd/internal/harness	8.253s
+FAIL

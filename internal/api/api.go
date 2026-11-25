@@ -29,6 +29,9 @@ type Server struct {
 	Enqueue func(ctx context.Context, id string)
 	// Topics names the Kafka topic for each channel.
 	Topics queue.Topics
+	// ProviderURLs are the fake providers' base URLs (admin endpoints for
+	// the UI and the learn page). Empty in production.
+	ProviderURLs map[string]string
 }
 
 type ctxKey struct{}
@@ -132,6 +135,8 @@ func (s *Server) Routes() *http.ServeMux {
 	mux.HandleFunc("POST /v1/notifications", s.auth(s.create))
 	mux.HandleFunc("GET /v1/notifications/{id}", s.auth(s.get))
 	mux.HandleFunc("GET /v1/notifications", s.auth(s.list))
+	s.learnRoutes(mux)
+	s.adminRoutes(mux)
 	return mux
 }
 

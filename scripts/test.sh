@@ -4,5 +4,5 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DC=${DC:-$(command -v docker-compose || echo "docker compose")}
-$DC -p dispatchd up -d --wait mysql kafka >/dev/null
+$DC -p dispatchd up -d --wait mysql kafka >/dev/null 2>&1
 go test -race -count=1 "$@" ./...

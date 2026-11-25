@@ -1,6 +1,6 @@
 # 03 Outbox、Kafka 和 worker：崩溃了也不丢、不重
 
-> tag：`step-03`
+> 讲解视频：[p2-outbox 进队列](../videos/p2-outbox.mp4) · tag：`step-03`
 
 ## 这一章解决什么问题？
 
@@ -37,6 +37,7 @@ API 每次提交后会叫醒 relay，所以正常路径没有轮询延迟。另�
 
 一个 channel 一个 topic：`notifications.email`、`notifications.push`，三个分区，key 是通知 id。
 email provider 出事时只堵 email 的 topic，push 照常发。
+前提是两个 topic 被**分开消费**：worker 里每个 channel 一个 Kafka 客户端、一个消费组、一个 poll 循环（第七章压测时才发现一开始没做到，见 `docs/problems.md` 的 q07）。
 
 ## worker 怎么做到「不重」？
 

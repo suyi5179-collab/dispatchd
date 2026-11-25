@@ -47,8 +47,10 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := r.Header.Get("Idempotency-Key")
+	// @learn:idem-sabotage
 	if config.Sabotaged(config.NoIdempotency) {
 		key = "" // sabotage: behave as if the service never had keys
+		// @learn:end idem-sabotage
 	} else if key == "" || len(key) > 255 {
 		Error(w, 400, "Idempotency-Key header is required (at most 255 characters)")
 		return

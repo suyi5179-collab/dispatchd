@@ -1,0 +1,199 @@
+{
+ "after_recovery": {
+  "buckets": [
+   {
+    "t_ms": 0,
+    "count": 32,
+    "rejected": 0
+   },
+   {
+    "t_ms": 100,
+    "count": 23,
+    "rejected": 11
+   },
+   {
+    "t_ms": 200,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 300,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 400,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 500,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 600,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 700,
+    "count": 24,
+    "rejected": 0
+   },
+   {
+    "t_ms": 800,
+    "count": 8,
+    "rejected": 0
+   },
+   {
+    "t_ms": 900,
+    "count": 49,
+    "rejected": 13
+   },
+   {
+    "t_ms": 1000,
+    "count": 15,
+    "rejected": 4
+   },
+   {
+    "t_ms": 1100,
+    "count": 48,
+    "rejected": 19
+   },
+   {
+    "t_ms": 1200,
+    "count": 1,
+    "rejected": 0
+   },
+   {
+    "t_ms": 1300,
+    "count": 11,
+    "rejected": 0
+   },
+   {
+    "t_ms": 1400,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 1500,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 1600,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 1700,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 1800,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 1900,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 2000,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 2100,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 2200,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 2300,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 2400,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 2500,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 2600,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 2700,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 2800,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 2900,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 3000,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 3100,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 3200,
+    "count": 0,
+    "rejected": 0
+   },
+   {
+    "t_ms": 3300,
+    "count": 10,
+    "rejected": 0
+   },
+   {
+    "t_ms": 3400,
+    "count": 7,
+    "rejected": 0
+   },
+   {
+    "t_ms": 3500,
+    "count": 13,
+    "rejected": 0
+   },
+   {
+    "t_ms": 3600,
+    "count": 6,
+    "rejected": 0
+   }
+  ],
+  "peak_per_100ms": 45,
+  "rejected_429": 47,
+  "requests": 247
+ },
+ "all_delivered_after_ms": 5217,
+ "jitter": false,
+ "notifications": 200,
+ "outage_ms": 1500,
+ "provider_capacity_rps": 200
+}

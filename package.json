@@ -1,0 +1,14 @@
+{
+  "name": "dispatchd-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "anchors": "node scripts/learn_anchors.mjs",
+    "check-anchors": "node scripts/check_anchors.mjs",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "record": "node video/record.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  }
+}

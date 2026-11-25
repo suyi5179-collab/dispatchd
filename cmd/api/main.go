@@ -51,7 +51,11 @@ func main() {
 	rl := relay.New(st, kc, log)
 	go rl.Run(ctx)
 
-	srv := &api.Server{Store: st, Log: log, Topics: topics, Enqueue: func(context.Context, string) { rl.Wake() }}
+	srv := &api.Server{Store: st, Log: log, Topics: topics, Enqueue: func(context.Context, string) { rl.Wake() },
+		ProviderURLs: map[string]string{
+			"email": config.Env("DISPATCHD_EMAIL_URL", "http://localhost:8851"),
+			"push":  config.Env("DISPATCHD_PUSH_URL", "http://localhost:8852"),
+		}}
 	go srv.ExpireKeys(ctx, 24*time.Hour, 10*time.Minute)
 	addr := config.Env("DISPATCHD_API_ADDR", ":8850")
 	hs := &http.Server{Addr: addr, Handler: srv.Routes(), ReadHeaderTimeout: 5 * time.Second}

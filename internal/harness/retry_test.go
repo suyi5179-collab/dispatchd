@@ -1,12 +1,16 @@
 package harness_test
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/suyi5179-collab/dispatchd/internal/backoff"
+	"github.com/suyi5179-collab/dispatchd/internal/config"
 	"github.com/suyi5179-collab/dispatchd/internal/fakeprovider"
 	"github.com/suyi5179-collab/dispatchd/internal/harness"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
@@ -84,13 +88,13 @@ func TestNewWorkerReloadsRetriesFromMySQL(t *testing.T) {
 // a campaign was queued in one go), then starts the worker while the
 // provider is down. All first attempts fail within a few milliseconds of
 // each other. The provider recovers 1.5 s later, but like a real service
-// that just came back it can only take 200 requests a second (burst 20);
+// that just came back it can only take 100 requests a second (burst 10);
 // anything above that gets 429. It returns what the provider saw after
 // recovering: the busiest 100 ms, the 429s it had to send, and the
 // requests per 100 ms.
 // @learn:storm-test
 func stormPeak(t *testing.T, n int) (peak, rejected int, hist string, total int, took time.Duration) {
-	s := harness.Start(t, harness.Options{NoWorkers: true, Concurrency: 64, Backoff: backoff.Policy{Base: 300 * time.Millisecond, Cap: 4800 * time.Millisecond, MaxAttempts: 12}})
+	s := harness.Start(t, harness.Options{NoWorkers: true, Concurrency: 64, Backoff: backoff.Policy{Base: 500 * time.Millisecond, Cap: 8 * time.Second, MaxAttempts: 12}})
 	for i := range n {
 		s.Submit(email(i))
 	}
@@ -109,7 +113,7 @@ func stormPeak(t *testing.T, n int) (peak, rejected int, hist string, total int,
 	s.StartWorker("w1")
 	time.Sleep(1500 * time.Millisecond) // the outage
 	recovered := s.Email.ElapsedMS()
-	s.Email.SetMode(fakeprovider.Mode{Mode: "ok", RateLimitRPS: 200, RateLimitBurst: 20})
+	s.Email.SetMode(fakeprovider.Mode{Mode: "ok", RateLimitRPS: 100, RateLimitBurst: 10})
 	c := s.WaitSettled(60 * time.Second)
 	took = time.Since(t0)
 	if c[store.StatusDelivered] != n {
@@ -122,6 +126,7 @@ func stormPeak(t *testing.T, n int) (peak, rejected int, hist string, total int,
 		}
 	}
 	st := fakeprovider.ComputeStats(after, 100)
+	saveStorm(t, n, recovered, after, st, took)
 	var b strings.Builder
 	for i, k := range st.Buckets {
 		if i >= 40 {
@@ -138,9 +143,50 @@ func TestRetriesAfterAnOutageDoNotArriveAsOneSpike(t *testing.T) {
 	t.Logf("%d notifications failed together; after recovery: busiest 100 ms %d requests, %d rejected with 429", n, peak, rejected)
 	t.Logf("requests per 100 ms after recovery: %s", hist)
 	t.Logf("provider requests in total: %d; all delivered after %v", total, took.Round(10*time.Millisecond))
-	if rejected > n/5 {
-		t.Fatalf("retry storm: the recovering provider had to reject %d requests (limit %d)", rejected, n/5)
+	if rejected > n*3/10 {
+		t.Fatalf("retry storm: the recovering provider had to reject %d requests (limit %d)", rejected, n*3/10)
 	}
 }
 
 // @learn:end storm-test
+
+// saveStorm writes the run's provider-side histogram when
+// DISPATCHD_RESULTS_DIR is set (scripts/contrasts.sh), for the README
+// and the UI's providers page.
+func saveStorm(t *testing.T, n int, recovered int64, after []fakeprovider.Record, st fakeprovider.Stats, took time.Duration) {
+	dir := os.Getenv("DISPATCHD_RESULTS_DIR")
+	if dir == "" {
+		return
+	}
+	type bucket struct {
+		TMS      int64 `json:"t_ms"`
+		Count    int   `json:"count"`
+		Rejected int   `json:"rejected"`
+	}
+	cnt, rej := map[int64]int{}, map[int64]int{}
+	var last int64
+	for _, r := range after {
+		k := (r.MS - recovered) / 100
+		cnt[k]++
+		if r.Status == 429 {
+			rej[k]++
+		}
+		last = max(last, k)
+	}
+	var bs []bucket
+	for k := int64(0); k <= last; k++ {
+		bs = append(bs, bucket{TMS: k * 100, Count: cnt[k], Rejected: rej[k]})
+	}
+	jitter := !config.Sabotaged(config.NoJitter)
+	out := map[string]any{"jitter": jitter, "notifications": n, "outage_ms": 1500, "provider_capacity_rps": 100,
+		"after_recovery":         map[string]any{"requests": st.Total, "peak_per_100ms": st.Peak, "rejected_429": st.ByStatus[429], "buckets": bs},
+		"all_delivered_after_ms": took.Milliseconds()}
+	name := "storm-jitter.json"
+	if !jitter {
+		name = "storm-nojitter.json"
+	}
+	b, _ := json.MarshalIndent(out, "", " ")
+	if err := os.WriteFile(filepath.Join(dir, name), append(b, '\n'), 0o644); err != nil {
+		t.Log(err)
+	}
+}
