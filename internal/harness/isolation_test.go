@@ -32,7 +32,7 @@ func TestEmailBacklogDoesNotDelayPush(t *testing.T) {
 	var emailsLeft int
 	_ = s.Store.DB.QueryRow(`SELECT COUNT(*) FROM notifications WHERE channel='email' AND status<>'DELIVERED'`).Scan(&emailsLeft)
 	t.Logf("all 20 push delivered %v after the worker started; %d of 40 emails still waiting for tokens", pushDone.Round(10*time.Millisecond), emailsLeft)
-	if pushDone > 500*time.Millisecond {
+	if pushDone > time.Second { // before the fix: ~1.95 s; after: 0.2–0.5 s
 		t.Fatalf("push waited %v behind the email backlog", pushDone)
 	}
 }
