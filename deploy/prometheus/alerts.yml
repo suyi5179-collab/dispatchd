@@ -1,0 +1,63 @@
+# Alerts for dispatchd. Each one names the runbook section to open
+# (docs/runbook.md). Thresholds are starting points for a demo stack.
+groups:
+  - name: dispatchd
+    rules:
+      - alert: DispatchdWorkerDown
+        expr: up{job="worker"} == 0
+        for: 1m
+        labels: {severity: page}
+        annotations:
+          summary: "worker {{ $labels.instance }} is not being scraped"
+          runbook: "docs/runbook.md#worker-crashed-or-restarting"
+
+      - alert: DispatchdKafkaLagHigh
+        expr: sum by (topic) (dispatchd_kafka_consumer_lag) > 500
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: "{{ $value }} messages waiting on {{ $labels.topic }}"
+          runbook: "docs/runbook.md#kafka-lag-is-growing"
+
+      - alert: DispatchdOutboxBacklog
+        expr: dispatchd_outbox_unpublished > 100
+        for: 2m
+        labels: {severity: page}
+        annotations:
+          summary: "{{ $value }} outbox rows not published to Kafka"
+          runbook: "docs/runbook.md#kafka-lag-is-growing"
+
+      - alert: DispatchdProviderErrorRateHigh
+        expr: |
+          sum by (provider) (rate(dispatchd_attempts_total{outcome!="DELIVERED"}[5m]))
+            / sum by (provider) (rate(dispatchd_attempts_total[5m])) > 0.2
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: "{{ $labels.provider }}: {{ $value | humanizePercentage }} of attempts fail"
+          runbook: "docs/runbook.md#a-provider-is-down"
+
+      - alert: DispatchdRateLimited
+        expr: sum by (provider) (rate(dispatchd_attempts_total{outcome="RATE_LIMITED"}[5m])) > 0.5
+        for: 5m
+        labels: {severity: ticket}
+        annotations:
+          summary: "{{ $labels.provider }} answers 429: the token bucket is set above the provider's quota"
+          runbook: "docs/runbook.md#the-provider-says-429"
+
+      - alert: DispatchdDeliveryLatencyHigh
+        expr: |
+          histogram_quantile(0.99, sum by (le, channel) (rate(dispatchd_delivery_latency_seconds_bucket[10m]))) > 60
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "p99 {{ $labels.channel }} delivery takes {{ $value }}s"
+          runbook: "docs/runbook.md#mysql-is-slow"
+
+      - alert: DispatchdPermanentFailures
+        expr: sum by (channel) (rate(dispatchd_notifications_final_total{status="FAILED_PERMANENT"}[15m])) > 0.1
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: "{{ $labels.channel }}: permanent failures; read last_error.action"
+          runbook: "docs/runbook.md#permanent-failures"

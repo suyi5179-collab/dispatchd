@@ -11,6 +11,7 @@ import (
 
 	"github.com/suyi5179-collab/dispatchd/internal/config"
 	"github.com/suyi5179-collab/dispatchd/internal/ids"
+	"github.com/suyi5179-collab/dispatchd/internal/metrics"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
 )
 
@@ -62,6 +63,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case errors.Is(err, errKeyReuse):
+		metrics.KeyConflicts.Inc()
 		JSON(w, 422, map[string]any{"error": err.Error(), "notification_id": res.id})
 		return
 	case err != nil:
@@ -74,6 +76,7 @@ func (s *Server) create(w http.ResponseWriter, r *http.Request) {
 		_ = s.Store.AddEvent(context.WithoutCancel(r.Context()), res.id, "replayed", "", "", map[string]any{"idempotency_key": key})
 		s.replayed()
 	} else {
+		metrics.Accepted.WithLabelValues(req.Channel).Inc()
 		s.Enqueue(context.WithoutCancel(r.Context()), res.id)
 	}
 	w.Header().Set("Content-Type", "application/json")

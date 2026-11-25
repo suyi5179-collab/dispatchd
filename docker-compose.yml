@@ -1,7 +1,7 @@
 # dispatchd: API (+ outbox relay), worker, fake email/push providers,
 # MySQL and Kafka (KRaft, single node).
 # Host ports: API 8850, email 8851, push 8852, worker 8853, MySQL 33518,
-# Kafka 19193.
+# Kafka 19193, Prometheus 9192, Grafana 3092.
 name: dispatchd
 
 x-go: &go
@@ -89,13 +89,35 @@ services:
       DISPATCHD_KAFKA_BROKERS: kafka:9092
       DISPATCHD_EMAIL_URL: http://email:8851
       DISPATCHD_PUSH_URL: http://push:8852
-      DISPATCHD_WORKER_NAME: worker-1
-    ports: ["8853:8853"]
+    ports: ["8853-8854:8853"] # two host ports so --scale worker=2 works
     depends_on: {api: {condition: service_healthy}}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8853/healthz >/dev/null"]
       interval: 2s
       retries: 60
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=2h"]
+    ports: ["9192:9090"]
+    mem_limit: 192m
+
+  grafana:
+    image: grafana/grafana:12.2.1
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/dispatchd.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3092:3000"]
+    mem_limit: 256m
 
 volumes:
   mysql-data:

@@ -12,6 +12,7 @@ import (
 	"github.com/suyi5179-collab/dispatchd/internal/backoff"
 	"github.com/suyi5179-collab/dispatchd/internal/config"
 	"github.com/suyi5179-collab/dispatchd/internal/delayq"
+	"github.com/suyi5179-collab/dispatchd/internal/metrics"
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
 	"github.com/suyi5179-collab/dispatchd/internal/ratelimit"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
@@ -127,6 +128,7 @@ func (d *Deliverer) record(ctx context.Context, n *store.Notification, name stri
 		ev["next_attempt_at"] = due.UTC()
 	}
 	d.Log.Info("attempt", "id", n.ID, "attempt", attempt, "kind", res.Kind, "status", res.HTTPStatus, "next", o.NewStatus)
+	observe(n, name, res, o.NewStatus)
 	// A fresh context: once the provider has answered, the answer must be
 	// written down even if shutdown has started.
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
@@ -163,6 +165,7 @@ func (d *Deliverer) fire(ctx context.Context, it delayq.Item) {
 			return // the attempt finished after all, or someone else took it
 		}
 		d.Log.Warn("lease expired; retrying", "id", it.ID, "attempt", it.Attempts)
+		metrics.LeaseExpired.Inc()
 	} else {
 		_ = d.Store.AddEvent(ctx, it.ID, "woken", "", "", map[string]any{"due": it.Due.UTC(), "late_ms": float64(now.Sub(it.Due)) / float64(time.Millisecond),
 			"timer_fires": d.Delay.TimerFires.Load(), "kicks": d.Delay.Kicks.Load(), "worker": d.Name})
@@ -196,6 +199,29 @@ func (d *Deliverer) Reload(ctx context.Context) (int, error) {
 }
 
 // @learn:end reload
+
+// observe updates the delivery metrics for one attempt.
+// @learn:observe
+func observe(n *store.Notification, name string, res provider.Result, status string) {
+	metrics.Attempts.WithLabelValues(name, string(res.Kind)).Inc()
+	if res.Latency > 0 {
+		metrics.ProviderSeconds.WithLabelValues(name).Observe(res.Latency.Seconds())
+	}
+	if res.Kind != provider.Delivered {
+		metrics.ProviderErrors.WithLabelValues(name, string(res.Kind), res.Code).Inc()
+	}
+	switch status {
+	case store.StatusDelivered:
+		metrics.DeliveryLatency.WithLabelValues(n.Channel).Observe(metrics.Since(n.CreatedAt))
+		metrics.Final.WithLabelValues(n.Channel, status).Inc()
+	case store.StatusFailedPermanent, store.StatusFailedExhausted:
+		metrics.Final.WithLabelValues(n.Channel, status).Inc()
+	case store.StatusRetryScheduled:
+		metrics.RetriesScheduled.WithLabelValues(name).Inc()
+	}
+}
+
+// @learn:end observe
 
 func lastError(name string, r provider.Result) map[string]any {
 	return map[string]any{"provider": name, "kind": r.Kind, "http_status": r.HTTPStatus, "code": r.Code, "message": r.Message, "action": r.Action, "raw": r.Body}

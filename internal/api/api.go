@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/suyi5179-collab/dispatchd/internal/metrics"
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
 	"github.com/suyi5179-collab/dispatchd/internal/queue"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
@@ -126,6 +127,7 @@ func (s *Server) list(w http.ResponseWriter, r *http.Request) {
 // Routes returns the HTTP handler.
 func (s *Server) Routes() *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.Handler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { JSON(w, 200, map[string]string{"status": "ok"}) })
 	mux.HandleFunc("POST /v1/notifications", s.auth(s.create))
 	mux.HandleFunc("GET /v1/notifications/{id}", s.auth(s.get))
@@ -142,8 +144,8 @@ func (s *Server) afterInsert(ctx context.Context, tx *sql.Tx, n *store.Notificat
 
 // @learn:end outbox-write
 
-// replayed counts idempotent replays (a metric from chapter 06).
-func (s *Server) replayed() {}
+// replayed counts idempotent replays.
+func (s *Server) replayed() { metrics.Replays.Inc() }
 
 // ExpireKeys deletes idempotency keys older than ttl, every interval.
 func (s *Server) ExpireKeys(ctx context.Context, ttl, every time.Duration) {

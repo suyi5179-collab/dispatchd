@@ -9,6 +9,7 @@ import (
 
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/suyi5179-collab/dispatchd/internal/metrics"
 	"github.com/suyi5179-collab/dispatchd/internal/store"
 )
 
@@ -47,9 +48,13 @@ func (r *Relay) Run(ctx context.Context) {
 				r.Log.Warn("relay", "err", err)
 				break
 			}
+			metrics.Published.Add(float64(n))
 			if n == 0 {
 				break
 			}
+		}
+		if u, err := r.Store.Unpublished(ctx); err == nil {
+			metrics.OutboxUnpublished.Set(float64(u))
 		}
 		select {
 		case <-ctx.Done():

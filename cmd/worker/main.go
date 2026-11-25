@@ -11,8 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/suyi5179-collab/dispatchd/internal/backoff"
 	"github.com/suyi5179-collab/dispatchd/internal/config"
+	"github.com/suyi5179-collab/dispatchd/internal/metrics"
 	"github.com/suyi5179-collab/dispatchd/internal/provider"
 	"github.com/suyi5179-collab/dispatchd/internal/queue"
 	"github.com/suyi5179-collab/dispatchd/internal/ratelimit"
@@ -88,7 +91,18 @@ func main() {
 		}
 	}()
 
+	group := config.Env("DISPATCHD_GROUP", "dispatchd-workers")
+	go worker.WatchLag(ctx, log, brokers, group, topics.All(), 5*time.Second)
+	metrics.GaugeFunc("dispatchd_delay_queue_size", "Retries and lease checks waiting in this worker's min-heap.", nil, func() float64 { return float64(d.Delay.Len()) })
+	metrics.CounterFunc("dispatchd_delay_queue_wakeups_total", "Times the delay queue goroutine woke up.", prometheus.Labels{"reason": "timer"}, func() float64 { return float64(d.Delay.TimerFires.Load()) })
+	metrics.CounterFunc("dispatchd_delay_queue_wakeups_total", "Times the delay queue goroutine woke up.", prometheus.Labels{"reason": "earlier_item"}, func() float64 { return float64(d.Delay.Kicks.Load()) })
+	metrics.CounterFunc("dispatchd_duplicate_messages_skipped_total", "Kafka messages whose attempt was already claimed or finished.", nil, func() float64 { return float64(worker.Duplicates.Load()) })
+	for name, b := range d.Limits {
+		metrics.GaugeFunc("dispatchd_ratelimit_tokens", "Tokens left in the provider's bucket (negative: callers waiting).", prometheus.Labels{"provider": name}, b.Tokens)
+	}
+
 	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics.Handler())
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(`{"status":"ok"}`)) })
 	hs := &http.Server{Addr: config.Env("DISPATCHD_WORKER_ADDR", ":8853"), Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() { _ = hs.ListenAndServe() }()
