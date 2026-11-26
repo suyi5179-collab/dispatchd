@@ -232,9 +232,9 @@
     "play_before_at": 3,
     "source": {
       "code": {
-        "path": "internal/harness/retry_test.go",
-        "start": 96,
-        "end": 150
+        "path": "docs/problems/snippets/storm_v2_test.go",
+        "start": 11,
+        "end": 65
       },
       "before": {
         "path": "docs/problems/snippets/storm_v1_test.go",
@@ -295,9 +295,9 @@
     "play_before_at": 3,
     "source": {
       "code": {
-        "path": "internal/harness/retry_test.go",
-        "start": 96,
-        "end": 150
+        "path": "docs/problems/snippets/storm_v2_test.go",
+        "start": 11,
+        "end": 65
       },
       "before": null
     }
@@ -742,6 +742,95 @@
         "path": "internal/ratelimit/bucket.go",
         "start": 70,
         "end": 72
+      }
+    }
+  },
+  {
+    "id": "q11-ci-storm-threshold",
+    "title": "第一次在 GitHub 上跑持续集成，重试风暴测试红了",
+    "subtitle": "本机被拒二十九个，持续集成的机器上被拒一百零九个，超过了写死的六十",
+    "lang": "go",
+    "code": "func stormPeak(t *testing.T, n int) (peak, rejected int, hist string, total int, took time.Duration) {\n\ts := harness.Start(t, harness.Options{NoWorkers: true, Concurrency: 64, Backoff: backoff.Policy{Base: 500 * time.Millisecond, Cap: 8 * time.Second, MaxAttempts: 12}})\n\tfor i := range n {\n\t\ts.Submit(email(i))\n\t}\n\tdeadline := time.Now().Add(10 * time.Second)\n\tfor {\n\t\tif u, _ := s.Store.Unpublished(t.Context()); u == 0 {\n\t\t\tbreak\n\t\t}\n\t\tif time.Now().After(deadline) {\n\t\t\tt.Fatal(\"outbox not drained\")\n\t\t}\n\t\ttime.Sleep(20 * time.Millisecond)\n\t}\n\ts.Email.SetMode(fakeprovider.Mode{Mode: \"fail_5xx\"})\n\tt0 := time.Now()\n\ts.StartWorker(\"w1\")\n\ttime.Sleep(1500 * time.Millisecond) // the outage\n\trecovered := s.Email.ElapsedMS()\n\ts.Email.SetMode(fakeprovider.Mode{Mode: \"ok\", RateLimitRPS: 100, RateLimitBurst: 10})\n\tc := s.WaitSettled(60 * time.Second)\n\ttook = time.Since(t0)\n\tif c[store.StatusDelivered] != n {\n\t\tt.Fatalf(\"delivered %v\", c)\n\t}\n\tvar after []fakeprovider.Record\n\tfor _, r := range s.Email.Records() {\n\t\tif r.MS >= recovered {\n\t\t\tafter = append(after, r)\n\t\t}\n\t}\n\tst := fakeprovider.ComputeStats(after, 100)\n\tsaveStorm(t, n, recovered, after, st, took)\n\tvar b strings.Builder\n\tfor i, k := range st.Buckets {\n\t\tif i >= 40 {\n\t\t\tbreak\n\t\t}\n\t\tfmt.Fprintf(&b, \"%d \", k.Count)\n\t}\n\treturn st.Peak, st.ByStatus[429], b.String(), len(s.Email.Records()), took\n}\n\nfunc TestRetriesAfterAnOutageDoNotArriveAsOneSpike(t *testing.T) {\n\tconst n = 200\n\tpeak, rejected, hist, total, took := stormPeak(t, n)\n\tt.Logf(\"%d notifications failed together; after recovery: busiest 100 ms %d requests, %d rejected with 429\", n, peak, rejected)\n\tt.Logf(\"requests per 100 ms after recovery: %s\", hist)\n\tt.Logf(\"provider requests in total: %d; all delivered after %v\", total, took.Round(10*time.Millisecond))\n\t// The baseline: the same storm on the same machine with jitter off.\n\t// A fixed limit (it was 60) passed on a laptop and failed on the\n\t// CI runner (109); what jitter must do is beat the synchronized wave\n\t// where it runs. Under DISPATCHD_SABOTAGE=jitter both runs have no\n\t// jitter, so they come out about equal and the test fails.\n\twas := config.Sabotaged(config.NoJitter)\n\tconfig.SetSabotage(config.NoJitter, true)\n\t_, base, _, _, _ := stormPeak(t, n)\n\tconfig.SetSabotage(config.NoJitter, was)\n\tt.Logf(\"same storm with jitter off: %d rejected with 429\", base)\n\tif rejected*2 > base {\n\t\tt.Fatalf(\"retry storm: the recovering provider rejected %d requests, not under half of the %d it rejects with jitter off\", rejected, base)\n\t}\n}",
+    "segments": [
+      {
+        "lines": [],
+        "text": "现象是这样的：仓库推上去以后，第一次在 GitHub 上跑持续集成，重试风暴这个测试红了。开着 jitter，provider 恢复后被拒了一百零九个，测试的上限是六十。"
+      },
+      {
+        "lines": [],
+        "text": "同一个测试，在我本机开着 jitter 只被拒二十九个，一直是绿的。"
+      },
+      {
+        "lines": [],
+        "text": "我先假设是代码在别的机器上出了错。看持续集成的日志，每个通知最后都送到了，退避也确实带了随机数，只是被拒的多。"
+      },
+      {
+        "lines": [],
+        "text": "再看阈值本身。六十是在我这台机器上调出来的。换一台速度和负载都不一样的机器，同样的随机退避，挤在同一个时间窗里的请求就会不一样多。所以错的不是 jitter，是拿一个绝对数字去衡量它。"
+      },
+      {
+        "lines": [
+          47
+        ],
+        "text": "修复后，先照旧跑一遍风暴，拿到开着 jitter 被拒了多少个。"
+      },
+      {
+        "lines": [
+          56,
+          57,
+          58
+        ],
+        "text": "然后在同一台机器上，把 jitter 关掉，同样的风暴再跑一遍，作为基准。"
+      },
+      {
+        "lines": [
+          61,
+          62,
+          63
+        ],
+        "text": "判据改成：开着 jitter 被拒的数量，必须不到关掉时的一半。"
+      },
+      {
+        "lines": [
+          51,
+          52,
+          53,
+          54,
+          55
+        ],
+        "text": "失败对照还在：如果整个测试是在关掉 jitter 的开关下跑的，两遍都没有 jitter，数字差不多，测试照样变红。"
+      },
+      {
+        "lines": [],
+        "text": "怎么证明修好了：本机开着 jitter 被拒四十四个，基准是三百八十七个，通过；关掉 jitter 再跑，三百二十六对三百六十四，变红。推上去以后，持续集成是绿的。"
+      },
+      {
+        "lines": [],
+        "text": "面试里一句话：性能类的断言，跟同一台机器上的基准比，别跟一个写死的数字比。"
+      }
+    ],
+    "example_code": "func stormPeak(t *testing.T, n int) (peak, rejected int, hist string, total int, took time.Duration) {\n\ts := harness.Start(t, harness.Options{NoWorkers: true, Concurrency: 64, Backoff: backoff.Policy{Base: 500 * time.Millisecond, Cap: 8 * time.Second, MaxAttempts: 12}})\n\tfor i := range n {\n\t\ts.Submit(email(i))\n\t}\n\tdeadline := time.Now().Add(10 * time.Second)\n\tfor {\n\t\tif u, _ := s.Store.Unpublished(t.Context()); u == 0 {\n\t\t\tbreak\n\t\t}\n\t\tif time.Now().After(deadline) {\n\t\t\tt.Fatal(\"outbox not drained\")\n\t\t}\n\t\ttime.Sleep(20 * time.Millisecond)\n\t}\n\ts.Email.SetMode(fakeprovider.Mode{Mode: \"fail_5xx\"})\n\tt0 := time.Now()\n\ts.StartWorker(\"w1\")\n\ttime.Sleep(1500 * time.Millisecond) // the outage\n\trecovered := s.Email.ElapsedMS()\n\ts.Email.SetMode(fakeprovider.Mode{Mode: \"ok\", RateLimitRPS: 100, RateLimitBurst: 10})\n\tc := s.WaitSettled(60 * time.Second)\n\ttook = time.Since(t0)\n\tif c[store.StatusDelivered] != n {\n\t\tt.Fatalf(\"delivered %v\", c)\n\t}\n\tvar after []fakeprovider.Record\n\tfor _, r := range s.Email.Records() {\n\t\tif r.MS >= recovered {\n\t\t\tafter = append(after, r)\n\t\t}\n\t}\n\tst := fakeprovider.ComputeStats(after, 100)\n\tsaveStorm(t, n, recovered, after, st, took)\n\tvar b strings.Builder\n\tfor i, k := range st.Buckets {\n\t\tif i >= 40 {\n\t\t\tbreak\n\t\t}\n\t\tfmt.Fprintf(&b, \"%d \", k.Count)\n\t}\n\treturn st.Peak, st.ByStatus[429], b.String(), len(s.Email.Records()), took\n}\n\nfunc TestRetriesAfterAnOutageDoNotArriveAsOneSpike(t *testing.T) {\n\tconst n = 200\n\tpeak, rejected, hist, total, took := stormPeak(t, n)\n\tt.Logf(\"%d notifications failed together; after recovery: busiest 100 ms %d requests, %d rejected with 429\", n, peak, rejected)\n\tt.Logf(\"requests per 100 ms after recovery: %s\", hist)\n\tt.Logf(\"provider requests in total: %d; all delivered after %v\", total, took.Round(10*time.Millisecond))\n\tif rejected > n*3/10 {\n\t\tt.Fatalf(\"retry storm: the recovering provider had to reject %d requests (limit %d)\", rejected, n*3/10)\n\t}\n}",
+    "example_segments": [
+      {
+        "lines": [
+          51,
+          52,
+          53
+        ],
+        "text": "修复前，判据是一个写死的上限：两百个通知里，被拒不能超过六十个。"
+      }
+    ],
+    "play_before_at": 4,
+    "source": {
+      "code": {
+        "path": "internal/harness/retry_test.go",
+        "start": 96,
+        "end": 160
+      },
+      "before": {
+        "path": "docs/problems/snippets/storm_v2_test.go",
+        "start": 11,
+        "end": 65
       }
     }
   }

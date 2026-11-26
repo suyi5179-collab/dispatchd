@@ -1,7 +1,7 @@
 # 日常问题与解决
 
 面试常问：「你遇到过什么问题？怎么定位的？怎么解决的？」
-这里有十个。前七个是做这个项目时**真实踩过的坑**（还有一个记 PID 的 shell 坑写在第七章教程里），报错和输出都是当时原样贴的；后三个是通知服务在生产上的**典型事故**，就是三个失败对照演示的那些。
+这里有十一个。q01–q07 和 q11 是做这个项目时**真实踩过的坑**（q11 是推上 GitHub 后第一次 CI 抓到的）（还有一个记 PID 的 shell 坑写在第七章教程里），报错和输出都是当时原样贴的；q08–q10 是通知服务在生产上的**典型事故**，就是三个失败对照演示的那些。
 
 每个问题都有一段逐行高亮的讲解视频（`docs/videos/problems/<id>.mp4`），讲解用的代码由 `scripts/build_problem_videos.mjs` 按 `@learn` 锚点从源码里切出来，不是手抄的。
 
@@ -258,6 +258,64 @@ kc, err := worker.ConsumerClient(brokers, "dispatchd-workers", topics.All(), ses
 同一个压测（每秒一百二十个，`docs/results/loadtest-120rps.json`）修复后再跑：email 仍然排队（每秒六十个进来、四十个出去），push 的 p50 9.5 毫秒、p99 44.6 毫秒。
 
 **面试怎么讲**：压测时我发现 push 和 email 一样慢，可 push 的限速明明宽得多（S）。我要让一个 channel 的问题只影响它自己（T）。我从 Kafka lag 看出 push 根本没被读，再读消费循环，找到整批等待造成的队头阻塞，写了一个能复现的测试（A）。拆成每个 channel 一个消费循环后，同样场景 push 从将近两秒降到两百毫秒（R）。
+
+<a id="q11"></a>
+
+### q11 · 第一次在 GitHub 上跑 CI，重试风暴测试红了
+
+**类别**：真实踩过的坑（推送之后，CI 第一次跑就抓到的）
+
+**现象**：仓库推到 GitHub，第一次 CI 的 go job 失败，只有一个测试红：
+
+```text
+--- FAIL: TestRetriesAfterAnOutageDoNotArriveAsOneSpike (7.31s)
+    retry_test.go:143: 200 notifications failed together; after recovery: busiest 100 ms 33 requests, 109 rejected with 429
+    retry_test.go:145: provider requests in total: 755; all delivered after 5.98s
+    retry_test.go:147: retry storm: the recovering provider had to reject 109 requests (limit 60)
+```
+
+同一个测试在本机开着 jitter 一直是绿的（那次是 29 个被拒）。
+
+**在哪里**：[`internal/harness/retry_test.go` 的 `TestRetriesAfterAnOutageDoNotArriveAsOneSpike`](../internal/harness/retry_test.go#anchor=storm-test)；修复前的写法冻结在 [`docs/problems/snippets/storm_v2_test.go`](problems/snippets/storm_v2_test.go#anchor=storm-v2)。
+
+**怎么定位**
+
+- 假设一：jitter 在 CI 上没生效。日志里每个通知都送到了，按 100 ms 统计的请求分布是一条往下走的曲线，不是关掉 jitter 时那种「一波、停、再一波」。排除。
+- 假设二：判据本身有问题。上限 60 是在本机上调出来的（[q04](#q04) 已经因为本机负载放宽过一次）。被拒多少，取决于同一个 100 ms 窗口里挤进来多少请求，这跟机器的速度和负载有关。换一台机器，同样的随机退避，数字就不一样。
+- 结论：要证明的不是「被拒少于某个数」，而是「jitter 比不加 jitter 好得多」，而且要在同一台机器上比。
+
+**怎么解决**
+
+修复前：一个写死的上限。
+
+```go
+if rejected > n*3/10 {
+    t.Fatalf("retry storm: the recovering provider had to reject %d requests (limit %d)", rejected, n*3/10)
+}
+```
+
+修复后：同一个测试里，把 jitter 关掉再跑一遍同样的风暴当基准，开着 jitter 的被拒数必须不到基准的一半。
+
+```go
+was := config.Sabotaged(config.NoJitter)
+config.SetSabotage(config.NoJitter, true)
+_, base, _, _, _ := stormPeak(t, n)
+config.SetSabotage(config.NoJitter, was)
+if rejected*2 > base { t.Fatalf(...) }
+```
+
+失败对照还活着：在 `DISPATCHD_SABOTAGE=jitter` 下两遍都没有 jitter，数字差不多，测试照样红。
+
+**怎么证明修好了**（`scripts/contrasts.sh`，输出在 `docs/results/contrast-jitter-*.txt`）：
+
+```text
+开 jitter：39 rejected with 429；same storm with jitter off: 363 rejected → PASS
+关 jitter：414 rejected；same storm with jitter off: 422 rejected → FAIL（not under half）
+```
+
+修复后推上去，GitHub 上的 CI 是绿的。
+
+**面试怎么讲**：项目推上 GitHub 后，CI 第一次跑就有一个重试风暴测试红了，本机却一直是绿的（S）。我要判断是代码坏了还是测试不稳（T）。我看 CI 日志里的请求分布，确认 jitter 在起作用，问题在于用一个本机调出来的绝对阈值去衡量性能；于是改成在同一台机器上跟关掉 jitter 的基准比（A）。本机三十九对三百六十三通过，失败对照照样变红，CI 也绿了（R）。
 
 ## 生产上的典型事故
 

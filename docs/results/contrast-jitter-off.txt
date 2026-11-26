@@ -1,8 +1,9 @@
-    retry_test.go:143: 200 notifications failed together; after recovery: busiest 100 ms 45 requests, 237 rejected with 429
-    retry_test.go:144: requests per 100 ms after recovery: 20 38 28 45 28 41 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 13 26 31 27 34 5 0 0 0 0 0 0 0 0 0 0 0 0 0 
-    retry_test.go:145: provider requests in total: 837; all delivered after 16.28s
-    retry_test.go:147: retry storm: the recovering provider had to reject 237 requests (limit 60)
---- FAIL: TestRetriesAfterAnOutageDoNotArriveAsOneSpike (19.56s)
+    retry_test.go:143: 200 notifications failed together; after recovery: busiest 100 ms 64 requests, 414 rejected with 429
+    retry_test.go:144: requests per 100 ms after recovery: 12 64 56 58 10 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 38 53 49 19 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
+    retry_test.go:145: provider requests in total: 1014; all delivered after 32.07s
+    retry_test.go:155: same storm with jitter off: 422 rejected with 429
+    retry_test.go:157: retry storm: the recovering provider rejected 414 requests, not under half of the 422 it rejects with jitter off
+--- FAIL: TestRetriesAfterAnOutageDoNotArriveAsOneSpike (68.16s)
 FAIL
-FAIL	./internal/harness	19.755s
+FAIL	./internal/harness	68.356s
 FAIL

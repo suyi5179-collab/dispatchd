@@ -27,3 +27,4 @@
 - [`q08-duplicate-on-retry.mp4`](problems/q08-duplicate-on-retry.mp4) — 调用方超时重试，用户收到两封一样的邮件
 - [`q09-retry-storm.mp4`](problems/q09-retry-storm.mp4) — provider 恢复的那一刻，被积压的重试一起打挂
 - [`q10-429-flood.mp4`](problems/q10-429-flood.mp4) — 积压一来，provider 回了四百多个四百二十九
+- [`q11-ci-storm-threshold.mp4`](problems/q11-ci-storm-threshold.mp4) — 第一次在 GitHub 上跑持续集成，重试风暴测试红了

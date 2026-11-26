@@ -187,12 +187,17 @@
   "storm-test": {
     "path": "internal/harness/retry_test.go",
     "start": 96,
-    "end": 150
+    "end": 160
   },
   "storm-v1": {
     "path": "docs/problems/snippets/storm_v1_test.go",
     "start": 11,
     "end": 24
+  },
+  "storm-v2": {
+    "path": "docs/problems/snippets/storm_v2_test.go",
+    "start": 11,
+    "end": 65
   },
   "timeout-retry-test": {
     "path": "internal/api/idempotency_test.go",

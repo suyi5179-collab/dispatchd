@@ -149,7 +149,7 @@
   "subtitle": "判据没有依赖那层保护，测试是死的",
   "lang": "go",
   "code_from": {
-   "anchor": "storm-test"
+   "anchor": "storm-v2"
   },
   "before_from": {
    "anchor": "storm-v1"
@@ -241,7 +241,7 @@
   "subtitle": "判据离正常的一侧太近，测的是机器忙不忙",
   "lang": "go",
   "code_from": {
-   "anchor": "storm-test"
+   "anchor": "storm-v2"
   },
   "segments": [
    {
@@ -718,6 +718,92 @@
    "token-bucket",
    "ratelimit-sabotage",
    "ratelimit-test"
+  ]
+ },
+ {
+  "id": "q11-ci-storm-threshold",
+  "category": "真实踩过的坑",
+  "title": "第一次在 GitHub 上跑持续集成，重试风暴测试红了",
+  "subtitle": "本机被拒二十九个，持续集成的机器上被拒一百零九个，超过了写死的六十",
+  "lang": "go",
+  "code_from": {
+   "anchor": "storm-test"
+  },
+  "before_from": {
+   "anchor": "storm-v2"
+  },
+  "segments": [
+   {
+    "lines": [],
+    "text": "现象是这样的：仓库推上去以后，第一次在 GitHub 上跑持续集成，重试风暴这个测试红了。开着 jitter，provider 恢复后被拒了一百零九个，测试的上限是六十。"
+   },
+   {
+    "lines": [],
+    "text": "同一个测试，在我本机开着 jitter 只被拒二十九个，一直是绿的。"
+   },
+   {
+    "lines": [],
+    "text": "我先假设是代码在别的机器上出了错。看持续集成的日志，每个通知最后都送到了，退避也确实带了随机数，只是被拒的多。"
+   },
+   {
+    "lines": [],
+    "text": "再看阈值本身。六十是在我这台机器上调出来的。换一台速度和负载都不一样的机器，同样的随机退避，挤在同一个时间窗里的请求就会不一样多。所以错的不是 jitter，是拿一个绝对数字去衡量它。"
+   },
+   {
+    "lines": [
+     47
+    ],
+    "text": "修复后，先照旧跑一遍风暴，拿到开着 jitter 被拒了多少个。"
+   },
+   {
+    "lines": [
+     56,
+     57,
+     58
+    ],
+    "text": "然后在同一台机器上，把 jitter 关掉，同样的风暴再跑一遍，作为基准。"
+   },
+   {
+    "lines": [
+     61,
+     62,
+     63
+    ],
+    "text": "判据改成：开着 jitter 被拒的数量，必须不到关掉时的一半。"
+   },
+   {
+    "lines": [
+     51,
+     52,
+     53,
+     54,
+     55
+    ],
+    "text": "失败对照还在：如果整个测试是在关掉 jitter 的开关下跑的，两遍都没有 jitter，数字差不多，测试照样变红。"
+   },
+   {
+    "lines": [],
+    "text": "怎么证明修好了：本机开着 jitter 被拒四十四个，基准是三百八十七个，通过；关掉 jitter 再跑，三百二十六对三百六十四，变红。推上去以后，持续集成是绿的。"
+   },
+   {
+    "lines": [],
+    "text": "面试里一句话：性能类的断言，跟同一台机器上的基准比，别跟一个写死的数字比。"
+   }
+  ],
+  "before_segments": [
+   {
+    "lines": [
+     51,
+     52,
+     53
+    ],
+    "text": "修复前，判据是一个写死的上限：两百个通知里，被拒不能超过六十个。"
+   }
+  ],
+  "play_before_at": 4,
+  "where": [
+   "storm-test",
+   "storm-v2"
   ]
  }
 ]

@@ -6,7 +6,7 @@
 
 Narrated walkthrough (Chinese), one short clip per stage: [`docs/videos/`](docs/videos/) — the same clips play inside the app at `/learn`. The narration is synthesized locally in the author's own cloned voice (CosyVoice 2) and checked back with local whisper.
 
-中文教程（七章，每章一个 git tag）：[`docs/tutorial/`](docs/tutorial/README.md) · 日常问题与解决（10 个，每个一段逐行讲解视频）：[`docs/problems.md`](docs/problems.md) · 面试题（29 题）：[`docs/interview.md`](docs/interview.md) · 值班手册：[`docs/runbook.md`](docs/runbook.md)
+中文教程（七章，每章一个 git tag）：[`docs/tutorial/`](docs/tutorial/README.md) · 日常问题与解决（11 个，每个一段逐行讲解视频）：[`docs/problems.md`](docs/problems.md) · 面试题（29 题）：[`docs/interview.md`](docs/interview.md) · 值班手册：[`docs/runbook.md`](docs/runbook.md)
 
 ## Results (measured in this repo)
 
@@ -20,7 +20,7 @@ All numbers come from this repository's tests and scripts, run on one laptop (Ap
 | protection | test | on | off |
 |---|---|---|---|
 | idempotency keys | `TestRetryAfterTimeoutSendsOnce`: the caller times out at 100 ms, the answer comes at 300 ms, the caller retries with the same key | 1 notification, 1 delivery | 2 notifications, 2 deliveries |
-| full jitter | `TestRetriesAfterAnOutageDoNotArriveAsOneSpike`: 200 queued notifications fail together; 1.5 s later the provider recovers but takes only 100 req/s | 29 requests rejected (429) after recovery, busiest 100 ms 20, all delivered in 9.3 s | 237 rejected, busiest 100 ms 45, all delivered in 16.3 s |
+| full jitter | `TestRetriesAfterAnOutageDoNotArriveAsOneSpike`: 200 queued notifications fail together; 1.5 s later the provider recovers but takes only 100 req/s. The test then reruns the same storm with jitter off on the same machine and requires jitter to cut the 429s at least in half (a fixed limit of 60 passed here and failed on the first GitHub CI run, [q11](docs/problems.md#q11)) | 39 rejected (429) after recovery, busiest 100 ms 22, all delivered in 9.0 s; same storm with jitter off: 363 rejected | both runs without jitter: 414 vs 422 rejected, busiest 100 ms 64, all delivered in 32.1 s → fails |
 | token bucket | `TestTokenBucketKeepsUnderTheProviderQuota`: 100 queued emails, provider quota 20/s, our bucket 18/s | 100 requests, 0 × 429, busiest second 22 | 528 requests, 428 × 429, busiest second 327 |
 <!-- contrasts:end -->
 

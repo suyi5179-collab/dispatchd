@@ -1,5 +1,6 @@
-    retry_test.go:143: 200 notifications failed together; after recovery: busiest 100 ms 20 requests, 29 rejected with 429
-    retry_test.go:144: requests per 100 ms after recovery: 20 13 13 16 15 12 11 13 4 6 8 16 8 10 6 6 5 5 3 3 0 4 0 1 2 3 1 3 3 1 5 1 3 0 2 0 2 0 2 0 
-    retry_test.go:145: provider requests in total: 855; all delivered after 9.27s
---- PASS: TestRetriesAfterAnOutageDoNotArriveAsOneSpike (11.34s)
-ok  	./internal/harness	11.612s
+    retry_test.go:143: 200 notifications failed together; after recovery: busiest 100 ms 22 requests, 39 rejected with 429
+    retry_test.go:144: requests per 100 ms after recovery: 14 20 22 11 13 20 14 6 7 15 9 8 11 3 10 2 2 8 1 5 1 3 1 1 0 4 0 2 1 4 2 1 1 1 3 2 1 1 1 5 
+    retry_test.go:145: provider requests in total: 852; all delivered after 9.04s
+    retry_test.go:155: same storm with jitter off: 363 rejected with 429
+--- PASS: TestRetriesAfterAnOutageDoNotArriveAsOneSpike (46.89s)
+ok  	./internal/harness	47.479s

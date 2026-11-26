@@ -143,8 +143,18 @@ func TestRetriesAfterAnOutageDoNotArriveAsOneSpike(t *testing.T) {
 	t.Logf("%d notifications failed together; after recovery: busiest 100 ms %d requests, %d rejected with 429", n, peak, rejected)
 	t.Logf("requests per 100 ms after recovery: %s", hist)
 	t.Logf("provider requests in total: %d; all delivered after %v", total, took.Round(10*time.Millisecond))
-	if rejected > n*3/10 {
-		t.Fatalf("retry storm: the recovering provider had to reject %d requests (limit %d)", rejected, n*3/10)
+	// The baseline: the same storm on the same machine with jitter off.
+	// A fixed limit (it was 60) passed on a laptop and failed on the
+	// CI runner (109); what jitter must do is beat the synchronized wave
+	// where it runs. Under DISPATCHD_SABOTAGE=jitter both runs have no
+	// jitter, so they come out about equal and the test fails.
+	was := config.Sabotaged(config.NoJitter)
+	config.SetSabotage(config.NoJitter, true)
+	_, base, _, _, _ := stormPeak(t, n)
+	config.SetSabotage(config.NoJitter, was)
+	t.Logf("same storm with jitter off: %d rejected with 429", base)
+	if rejected*2 > base {
+		t.Fatalf("retry storm: the recovering provider rejected %d requests, not under half of the %d it rejects with jitter off", rejected, base)
 	}
 }
 
