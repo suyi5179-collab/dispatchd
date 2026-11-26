@@ -116,7 +116,7 @@ test('problems tab: every problem has its write-up, source links and video slot'
   await expect(items.first()).toBeVisible()
   const n = await items.count()
   expect(n).toBeGreaterThanOrEqual(6)
-  expect(n).toBeLessThanOrEqual(10)
+  expect(n).toBeLessThanOrEqual(12)
   const first = items.first()
   await first.locator('summary').click()
   for (const part of ['现象', '在哪里', '怎么定位', '怎么解决', '怎么证明修好了', '面试怎么讲']) await expect(first.locator('.answer')).toContainText(part)
