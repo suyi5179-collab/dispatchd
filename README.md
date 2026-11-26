@@ -2,9 +2,9 @@
 
 **A Go notification service that accepts email/push requests over HTTP, keeps delivery state in MySQL, and delivers asynchronously through Kafka, with idempotency keys, exponential backoff with full jitter, a per-provider token bucket and a min-heap delay queue, each proven by a test that fails when that protection is switched off.**
 
-[![learn mode](docs/learn-preview.gif)](../../releases/tag/learn-video)
+[![learn mode](docs/learn-preview.gif)](docs/videos/)
 
-Full walkthrough video: [Releases → learn-video](../../releases/tag/learn-video). Per-stage clips live in [`docs/videos/`](docs/videos/) and play inside the app at `/learn`.
+Narrated walkthrough (Chinese), one short clip per stage: [`docs/videos/`](docs/videos/) — the same clips play inside the app at `/learn`. The narration is synthesized locally in the author's own cloned voice (CosyVoice 2) and checked back with local whisper.
 
 中文教程（七章，每章一个 git tag）：[`docs/tutorial/`](docs/tutorial/README.md) · 日常问题与解决（10 个，每个一段逐行讲解视频）：[`docs/problems.md`](docs/problems.md) · 面试题（29 题）：[`docs/interview.md`](docs/interview.md) · 值班手册：[`docs/runbook.md`](docs/runbook.md)
 
